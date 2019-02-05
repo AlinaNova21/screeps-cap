@@ -13,7 +13,9 @@
     "@screeps/renderer-metadata": "^1.0.1",
     "@slack/client": "^4.8.0",
     "electron": "^4.0.1",
+    "electron-devtools-installer": "^2.2.4",
     "screeps-api": "^1.8.0",
-    "utf-8-validate": "^5.0.2"
+    "utf-8-validate": "^5.0.2",
+    "vue": "^2.6.2"
   }
 }

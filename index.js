@@ -11,11 +11,14 @@ let renderer = null
 let currentRoom = ''
 let currentTerrain = null
 let cachedObjects = {}
-let state = {}
-let resetting = false
-let lastPvpTime = null
+let state = {
+  gameTime: 0,
+  pvp: {
+    rooms: []
+  }
+}
 const ROOM_SWAP_INTERVAL = 10000
-
+resetState()
 const roomList = []
 for(let y=0; y < 11; y++) {
   for(let x=0; x < 11; x++) {
@@ -23,45 +26,164 @@ for(let y=0; y < 11; y++) {
   }
 }
 
+Vue.component('ba-header', {
+  props: ['state'],
+  template: `
+    <div>
+      <div style="font-size: 32pt">BotArena</div>
+      <div>https://screepswargames.us/</div>
+      <div>http://chat.screeps.com #botarena</div>
+      <div>Room: {{state.room}}</div>
+      <div>Time: {{state.gameTime}}</div>
+    </div>`,
+})
+
+Vue.component('scoreboard', {
+  props: [],
+  template: `
+    <div>
+      <table>
+        <tr>
+          <th>#</th>
+          <th style="text-align: left">Username</th>
+          <th style="text-align: center">Rooms</th>
+          <th style="text-align: center">Score</th>
+        </tr>
+        <tr v-for="(record, index) in records" :key="record.username">
+          <td>{{ index+1 }})</td>
+          <td><img class="badge" :src="badgeURL(record.username)">{{record.username}}</td>
+          <td style="text-align: center">{{record.rooms}}</td>
+          <td style="text-align: center">{{record.score}}</td>
+        </tr>
+      </table>
+      <div>Note: Score does not check for active spawns</div>
+    </div>
+    `,
+  data() {
+    return {
+      updateInterval: null,
+      stats: {},
+      users: {}
+    }
+  },
+  mounted() {
+    this.updateInterval = setInterval(() => this.update(), 5000)
+    setTimeout(this.update, 1000)
+  },
+  unmount() {
+    clearInterval(this.updateInterval)
+  },
+  computed: {
+    records() {
+      const records = []
+      const uids = {}
+      for (let room in this.stats) {
+        const { own } = this.stats[room]
+        if (!own || !own.level) continue
+        if (uids[own.user]) {
+          uids[own.user].rooms++
+          uids[own.user].score += own.level
+        } else {
+          uids[own.user] = {
+            uid: own.user,
+            rooms: 1,
+            score: own.level
+          }
+        }
+      }
+      const data = Object.keys(uids).map(k => uids[k])
+      data.sort((a,b) => b.score - a.score)
+      for(let record of data) {
+        const { score, rooms, uid } = record
+        const { username } = this.users[uid]
+       records.push({ username, rooms, score })
+      }
+      return records
+    }
+  },
+  methods: {
+    badgeURL(username) {
+      return `${api.opts.url}api/user/badge-svg?username=${username}`
+    },
+    async update() {
+      const { stats, users } = await api.raw.game.mapStats(roomList, 'owner0')
+      this.stats = stats
+      this.users = users
+    }
+  }
+})
+
+Vue.component("pvp-battles", {
+  props: ['state'],
+  template: `
+    <div>
+      <div>Recent Battles:</div>
+      <table>
+        <tr v-for="b in battles" :key="b.room">
+          <td>{{ b.room }}</td>
+          <td>{{ b.ticks }} ticks ago</td>
+        </tr>
+      </table>
+    </div>`,
+  computed: {
+    battles() {
+      return state.pvp.rooms.map(({ _id: room, lastPvpTime }) => {
+        const ticks = Math.max(0, state.gameTime - lastPvpTime)
+        return { room, ticks }
+      })
+    }
+  }
+})
+
+const app = new Vue({
+  el: '#infoDiv',
+  template: `
+    <div id="infoDiv">
+      <ba-header :state="state"></ba-header>
+      <scoreboard></scoreboard>
+      <br>
+      <pvp-battles :state="state"></pvp-battles>
+    </div>`,
+  data() {
+    return {
+      state
+    }
+  }
+})
+
+const app2 = new Vue({
+  el: '#usersDiv',
+  template: `
+    <div id="usersDiv">
+      <div v-for="user in users">
+        <img class="badge" :src="user.badgeUrl">
+        {{user.username}}
+      </div>
+    </div>`,
+  data() {
+    return { state }
+  },
+  computed: {
+    users () {
+      return Object.values(this.state.users).filter(u => u._id.length > 1)
+    }
+  }
+})
+
 // Restart occasionally, sometimes the cycle breaks, this helps auto-recover
 setTimeout(() => window.close(), 30 * 60 * 1000)
-
-async function renderUsers() {
-  while(true) {
-    let out = ''
-    for(const id in state.users) {
-      const user = state.users[id]
-      if(id.length === 1) continue
-      out += `<div><img class="badge" src="${user.badgeUrl}">${user.username}</div>`
-    }    
-    usersDiv.innerHTML = out
-    await sleep(1000)
-  }
-}
 
 async function roomSwap() {
   while(true) {
     try {
-      await sleep(ROOM_SWAP_INTERVAL)
       let { pvp: { botarena: { rooms } } } = await api.raw.experimental.pvp(100)
+      state.pvp.rooms = rooms
       rooms.sort((a,b) => b.lastPvpTime - a.lastPvpTime)
-      const pi = await playerInfo()
-      infoDiv.innerHTML = `
-        <span style="font-size: 32pt">BotArena</span>
-        https://screepswargames.us/
-        http://chat.screeps.com #botarena
-        Room: ${currentRoom}
-        Time: ${state.gameTime}
-        
-        ${pi}
-        ${buildSideTable(rooms)}
-      `.replace(/\n/g, '<br>')
       rooms = rooms.filter(r => r.lastPvpTime > state.gameTime - 10)
       let room = ''
       if (rooms.length) {
         const { _id, lastPvpTime: time } = rooms[Math.floor(Math.random() * rooms.length)]
         room = _id
-        lastPvpTime = time
       } else {
         const { stats } = await api.raw.game.mapStats(roomList, 'owner0')
         for(let k in stats) {
@@ -73,62 +195,10 @@ async function roomSwap() {
         console.log(stats)
         room = rooms[Math.floor(Math.random() * rooms.length)]
       }
-      infoDiv.innerHTML = infoDiv.innerHTML.replace(currentRoom, room)
       await setRoom(room)
-    } catch(e) { }
+    } catch(e) { console.error('roomSwap', e) }
+    await sleep(ROOM_SWAP_INTERVAL)
   }
-}
-
-function buildSideTable(rooms) {
-  let out = ''
-  if(rooms.length) {
-    out += 'Recent Battles:\n'
-  }
-  rooms.forEach(({ _id, lastPvpTime }) => {
-    out += `${_id} ~${Math.max(0,state.gameTime - lastPvpTime)} ticks ago\n`
-  })
-  return out
-}
-
-async function playerInfo() {
-  let out = `<table><tr>
-    <th>#</th>
-    <th style="text-align: left">Username</th>
-    <th style="text-align: center">Rooms</th>
-    <th style="text-align: center">Score</th>
-  </tr>`
-  const uids = {}
-  const { stats, users } = await api.raw.game.mapStats(roomList, 'owner0')
-  for(let room in stats) {
-    const { own } = stats[room]
-    if (!own || !own.level) continue
-    if (uids[own.user]) {
-      uids[own.user].rooms++
-      uids[own.user].score += own.level
-    } else {
-      uids[own.user] = {
-        uid: own.user,
-        rooms: 1,
-        score: own.level
-      }
-    }
-  }
-  const data = Object.keys(uids).map(k => uids[k])
-  data.sort((a,b) => b.score - a.score)
-  for(let record of data) {
-    const { score, rooms, uid } = record
-    const user = users[uid]
-    let username = user.username
-    let ind = data.indexOf(record) + 1
-    out += `<tr>
-      <td>${ind})</td>
-      <td><img class="badge" src="${api.opts.url}api/user/badge-svg?username=${username}">${username}</td>
-      <td style="text-align: center">${rooms}</td>
-      <td style="text-align: center">${score}</td>
-    </tr>`
-  }
-  out += '</table>Note: Score does not check for active spawns<br>'
-  return out.replace(/\n/g, '')
 }
 
 async function setRoom(room) {
@@ -152,33 +222,22 @@ async function setRoom(room) {
 }
 
 async function resetState() {
- state = {
+  Object.assign(state, {
     objects: [],
     users: {
       '2': { _id: '2', username: 'Invader', usernameLower: 'invader', cpu: 100, cpuAvailable: 10000, gcl: 13966610.2, active: 0 },
       '3': { _id: '3', username: 'Source Keeper', usernameLower: 'source keeper', cpu: 100, cpuAvailable: 10000, gcl: 13966610.2, active: 0 },
     },
-    gameTime: 0,
     room: currentRoom
-  }
+  })
   cachedObjects = {}
-  if (renderer) {
-    await renderer.applyState(state, 0)
-  }
 }
 
 async function run() {
-  resetState()
-  renderUsers()
-  const preTicks = 0
-  const ticksToRecord = 1000
-  const ticksPerSecond = 40
   api = await ScreepsAPI.fromConfig("botarena")
-  const started = false
   const view = mainDiv
   cachedObjects = {}
   GameRenderer.compileMetadata(worldConfigs.metadata)
-  worldConfigs.metadata.objects.creep.calculations[0].func = ({ state : { user }, stateExtra: { users } }) => users[user].username
   worldConfigs.BADGE_URL = `${api.opts.url}api/user/badge-svg?username=%1`
   renderer = new GameRenderer({
     size: {
@@ -201,17 +260,18 @@ async function run() {
   await renderer.init(view)
   renderer.resize()
   await api.socket.connect()
-  api.socket.on('message', async ({ type, channel, id, data, data: { gameTime, info, objects, users = {}, visual } = {} }) => {
+  api.socket.on('message', async ({ type, channel, id, data, data: { gameTime=0, info, objects, users = {}, visual } = {} }) => {
     if(type !== 'room') return
-    if(resetting) return
     if(id !== currentRoom) return
+    let tickSpeed = 1
     if(state.room !== currentRoom) {
+      tickSpeed = 0
       console.log(`reset`)
       await api.socket.unsubscribe(`room:${state.room}`)
       await resetState()
       console.log('setTerrain')
       await renderer.setTerrain(currentTerrain)
-      const [,controller] = Object.entries(objects).find(([,obj]) => obj.type == 'controller')
+      const [,controller] = Object.entries(objects).find(([,obj]) => obj.type == 'controller') || []
       worldConfigs.gameData.player = ''
       if (controller) {
         if (controller.user) {
@@ -225,7 +285,7 @@ async function run() {
     for (const k in users) {
       state.users[k] = users[k]
     }
-    for (const [id,diff] of Object.entries(objects)) {
+    for (const [id, diff] of Object.entries(objects)) {
       const cobj = cachedObjects[id] = cachedObjects[id] || {}
       if (diff) {
         cachedObjects[id] = Object.assign({}, cobj, diff)
@@ -234,9 +294,9 @@ async function run() {
       }
     }
     state.objects = Object.entries(cachedObjects).map(([,e]) => e)
-    state.gameTime = gameTime
+    state.gameTime = gameTime || state.gameTime
     try {
-      renderer.applyState(state, 1)
+      renderer.applyState(state, tickSpeed)
     }catch(e) {
       console.error('Error in update', e)
       setRoom(currentRoom) // Reset the view
@@ -245,8 +305,6 @@ async function run() {
   console.log('Complete!')
   roomSwap()
 }
-
-var electron = require('electron');
 
 function sleep(ms) {
   return new Promise(res => setTimeout(res, ms))

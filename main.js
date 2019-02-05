@@ -5,6 +5,14 @@ let mainWindow
 
 const DEV = process.argv.includes('--dev')
 
+if (DEV) {
+  const { default: installExtension, VUEJS_DEVTOOLS } = require('electron-devtools-installer');
+  
+  installExtension(VUEJS_DEVTOOLS)
+      .then((name) => console.log(`Added Extension:  ${name}`))
+      .catch((err) => console.log('An error occurred: ', err));
+}
+
 function createWindow () {
   mainWindow = new BrowserWindow({width: 800, height: 600, frame: DEV })
   mainWindow.loadFile('index.html')
