@@ -1,10 +1,12 @@
 const path = require('path')
 const fs = require('fs')
+const TwitchBot = require('twitch-bot')
 const { ScreepsAPI } = require('screeps-api')
 const { GameRenderer } = require('@screeps/renderer')
 const worldConfigs = require('./assets/worldConfigs')
 const { resourceMap, rescaleResources } = require('./assets/resourceMap')
 const argv = require('electron').remote.process.argv
+
 
 let api = null 
 let renderer = null
@@ -17,6 +19,9 @@ let state = {
     rooms: []
   }
 }
+let chatRoom = ''
+let chatRoomTimeout = 0
+
 const ROOM_SWAP_INTERVAL = 10000
 resetState()
 const roomList = []
@@ -183,7 +188,9 @@ async function roomSwap() {
       rooms.sort((a,b) => b.lastPvpTime - a.lastPvpTime)
       rooms = rooms.filter(r => r.lastPvpTime > state.gameTime - 10)
       let room = ''
-      if (rooms.length) {
+      if (chatRoom && chatRoomTimeout > Date.now()) {
+        room = chatRoom
+      } else if (rooms.length) {
         const { _id, lastPvpTime: time } = rooms[Math.floor(Math.random() * rooms.length)]
         room = _id
       } else {
@@ -239,7 +246,25 @@ async function resetState() {
 }
 
 async function run() {
-  api = await ScreepsAPI.fromConfig("botarena")
+  api = await ScreepsAPI.fromConfig("botarena",'screeps-cap')
+  const { twitch, chatTimeout = 20 } = api.appConfig
+  if (twitch) {
+    const Bot = new TwitchBot(twitch)
+    Bot.on('join', channel => {
+      console.log(`Joined channel: ${channel}`)
+    })
+    Bot.on('error', err => {
+      console.log(err)
+    })
+    Bot.on('message', chatter => {
+      const [,room] = chatter.message.match(/^!room ([EW]\d+[NS]\d+)$/) || []
+      if (room) {
+        setRoom(room)
+        chatRoom = room
+        chatRoomTimeout = Date.now() + (chatTimeout * 1000)
+      }
+    })
+  }
   const view = mainDiv
   cachedObjects = {}
   const say = worldConfigs.metadata.objects.creep.processors.find(p => p.type === 'say')

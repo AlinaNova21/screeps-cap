@@ -861,6 +861,11 @@ load-json-file@^1.0.0:
     pinkie-promise "^2.0.0"
     strip-bom "^2.0.0"
 
+lodash@^4.17.4:
+  version "4.17.11"
+  resolved "https://registry.yarnpkg.com/lodash/-/lodash-4.17.11.tgz#b39ea6229ef607ecd89e2c8df12536891cac9b8d"
+  integrity sha512-cQKh8igo5QUhZ7lg38DYWAxMvjSAKG0A8wGSVimP07SIUEK2UO+arSRKbRZWtelMtN5V0Hkwh5ryOto/SshYIg==
+
 loglevel@^1.6.1:
   version "1.6.1"
   resolved "https://registry.yarnpkg.com/loglevel/-/loglevel-1.6.1.tgz#e0fc95133b6ef276cdc8887cdaf24aa6f156f8fa"
@@ -1569,6 +1574,13 @@ tweetnacl@^0.14.3, tweetnacl@~0.14.0:
   version "0.14.5"
   resolved "https://registry.yarnpkg.com/tweetnacl/-/tweetnacl-0.14.5.tgz#5ae68177f192d4456269d108afa93ff8743f4f64"
   integrity sha1-WuaBd/GS1EViadEIr6k/+HQ/T2Q=
+
+twitch-bot@^1.2.5:
+  version "1.2.5"
+  resolved "https://registry.yarnpkg.com/twitch-bot/-/twitch-bot-1.2.5.tgz#977900eefae42037a79e4e1c283bd3773adec919"
+  integrity sha512-cLsntXSMO7Eva0eoHf629qyM6wQWGZsAMZZdno3oaaqN7tXULmoX5z7fIlW43frAsPfr/LlSMc+cs6i/ukMVgA==
+  dependencies:
+    lodash "^4.17.4"
 
 typedarray@^0.0.6:
   version "0.0.6"
