@@ -68,6 +68,36 @@
         */
         color: white;
       }
+      .battle {
+        display: flex;
+      }
+      .battle > div {
+        flex: 1;
+      }
+      .battle .ticks {
+        text-align: right;
+        padding-right: 10px;
+      }
+      .battles-enter-active, .battles-leave-active {
+        transition: all 1s;
+      }
+      .battles-enter, .battles-leave-to /* .list-leave-active below version 2.1.8 */ {
+        opacity: 0;
+        transform: translateY(100px);
+      }
+      .battles-move {
+        transition: transform 1s;
+      }
+      .users-enter-active, .users-leave-active {
+        transition: all 1s;
+      }
+      .users-enter, .users-leave-to /* .list-leave-active below version 2.1.8 */ {
+        opacity: 0;
+        transform: translateY(-100px);
+      }
+      .users-move {
+        transition: transform 1s;
+      }
     </style>
   </body>
 </html>

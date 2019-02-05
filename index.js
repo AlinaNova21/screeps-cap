@@ -118,12 +118,12 @@ Vue.component("pvp-battles", {
   template: `
     <div>
       <div>Recent Battles:</div>
-      <table>
-        <tr v-for="b in battles" :key="b.room">
-          <td>{{ b.room }}</td>
-          <td>{{ b.ticks }} ticks ago</td>
-        </tr>
-      </table>
+      <transition-group name="battles">
+        <div class="battle" v-for="b in battles" :key="b.room">
+          <div class="room">{{ b.room }}</div>
+          <div class="ticks">{{ b.ticks }} ticks ago</div>
+        </div>
+      </transition-group>
     </div>`,
   computed: {
     battles() {
@@ -155,10 +155,12 @@ const app2 = new Vue({
   el: '#usersDiv',
   template: `
     <div id="usersDiv">
-      <div v-for="user in users">
-        <img class="badge" :src="user.badgeUrl">
-        {{user.username}}
-      </div>
+      <transition-group name="users">
+        <div v-for="user in users" :key="user._id">
+          <img class="badge" :src="user.badgeUrl">
+          {{user.username}}
+        </div>
+      </transition-group>
     </div>`,
   data() {
     return { state }
@@ -240,6 +242,8 @@ async function run() {
   api = await ScreepsAPI.fromConfig("botarena")
   const view = mainDiv
   cachedObjects = {}
+  const say = worldConfigs.metadata.objects.creep.processors.find(p => p.type === 'say')
+  say.when = ({ state: { actionLog: { say } = {} } }) => !!say && say.isPublic
   GameRenderer.compileMetadata(worldConfigs.metadata)
   worldConfigs.BADGE_URL = `${api.opts.url}api/user/badge-svg?username=%1`
   renderer = new GameRenderer({
@@ -274,7 +278,7 @@ async function run() {
       await resetState()
       console.log('setTerrain')
       await renderer.setTerrain(currentTerrain)
-      const [,controller] = Object.entries(objects).find(([,obj]) => obj.type == 'controller') || []
+      const [,controller] = Object.entries(objects).find(([,obj]) => obj && obj.type == 'controller') || []
       worldConfigs.gameData.player = ''
       if (controller) {
         if (controller.user) {
@@ -302,6 +306,7 @@ async function run() {
       renderer.applyState(state, tickSpeed)
     }catch(e) {
       console.error('Error in update', e)
+      state.room = ''
       setRoom(currentRoom) // Reset the view
     }
   })
