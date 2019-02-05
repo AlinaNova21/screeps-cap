@@ -1,0 +1,19 @@
+{
+  "name": "screeps-cap",
+  "version": "1.0.0",
+  "main": "main.js",
+  "license": "MIT",
+  "scripts": {
+    "_postinstall": "cp -f lib/* node_modules/electron/dist/",
+    "start": "electron .",
+    "dev": "electron . --dev"
+  },
+  "dependencies": {
+    "@screeps/renderer": "^1.0.0",
+    "@screeps/renderer-metadata": "^1.0.1",
+    "@slack/client": "^4.8.0",
+    "electron": "^4.0.1",
+    "screeps-api": "^1.8.0",
+    "utf-8-validate": "^5.0.2"
+  }
+}

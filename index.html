@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html>
+  <head>
+  </head>
+  <body>
+    <div id="mainDiv"></div>
+    <div id="infoDiv"></div>
+    <div id="usersDiv"></div>
+    <img id="logo" src="https://screepspl.us/images/logo_small.png" />
+    <script src="index.js"></script>
+    <style>
+      body {
+        margin:0;
+        padding:0;
+        background: black;
+        font-family: "NotoSans Nerd Font";
+      }
+      #usersDiv {
+        color: white;
+        position: fixed;
+        top: 20px;
+        left: 310px;
+      }
+      .badge {
+        width: 16px;
+        margin-right: 2px;
+      }
+      #logo {
+        position: fixed;
+        bottom: 0;
+        right: 0;
+      }
+      #mainDiv {
+        position: fixed;
+        top: 10px;
+        left: 300px;
+        /*
+        right: 100px;
+        */
+        width: calc(100vh - 20px);
+        bottom: 10px
+      }
+      #infoDiv {
+        position: fixed;
+        top: 0;
+        right: 50px;
+        width: 500px;
+        bottom: 0;
+        color: white;
+      }
+    </style>
+  </body>
+</html>
