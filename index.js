@@ -230,6 +230,9 @@ async function resetState() {
     },
     room: currentRoom
   })
+  if (renderer) {
+    renderer.applyState(state, 0)
+  }
   cachedObjects = {}
 }
 
