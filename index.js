@@ -7,7 +7,6 @@ const worldConfigs = require('./assets/worldConfigs')
 const { resourceMap, rescaleResources } = require('./assets/resourceMap')
 const argv = require('electron').remote.process.argv
 
-
 let api = null 
 let renderer = null
 let currentRoom = ''
@@ -25,9 +24,12 @@ let chatRoomTimeout = 0
 const ROOM_SWAP_INTERVAL = 10000
 resetState()
 const roomList = []
-for(let y=0; y < 11; y++) {
-  for(let x=0; x < 11; x++) {
+for(let y=0; y < 21; y++) {
+  for(let x=0; x < 21; x++) {
     roomList.push(`E${x}S${y}`)
+    roomList.push(`W${x}S${y}`)
+    roomList.push(`E${x}N${y}`)
+    roomList.push(`W${x}N${y}`)
   }
 }
 
@@ -54,13 +56,14 @@ Vue.component('scoreboard', {
           <th style="text-align: center">Rooms</th>
           <th style="text-align: center">Score</th>
         </tr>
-        <tr v-for="(record, index) in records" :key="record.username">
+        <tr v-for="(record, index) in slicedRecords" :key="record.username">
           <td>{{ index+1 }})</td>
           <td><img class="badge" :src="badgeURL(record.username)">{{record.username}}</td>
           <td style="text-align: center">{{record.rooms}}</td>
           <td style="text-align: center">{{record.score}}</td>
         </tr>
       </table>
+      <div v-if="records.length > 15">Only top 15 players listed</div>
       <div>Note: Score does not check for active spawns</div>
     </div>
     `,
@@ -104,6 +107,9 @@ Vue.component('scoreboard', {
        records.push({ username, rooms, score })
       }
       return records
+    },
+    slicedRecords() {
+      return this.records.slice(0, 15)
     }
   },
   methods: {
@@ -111,6 +117,7 @@ Vue.component('scoreboard', {
       return `${api.opts.url}api/user/badge-svg?username=${username}`
     },
     async update() {
+      while(!api) await sleep(1000)
       const { stats, users } = await api.raw.game.mapStats(roomList, 'owner0')
       this.stats = stats
       this.users = users
@@ -179,13 +186,21 @@ const app2 = new Vue({
 
 // Restart occasionally, sometimes the cycle breaks, this helps auto-recover
 setTimeout(() => window.close(), 30 * 60 * 1000)
-
+document.addEventListener('DOMContentLoaded', () => {
+  map.setZoomFactor(0.9)
+})
 async function roomSwap() {
+  // return setRoom('E7N5')
   while(true) {
     try {
-      let { pvp: { botarena: { rooms } } } = await api.raw.experimental.pvp(100)
+      const { pvp } =  await api.raw.experimental.pvp(100)
+      const [shard='shard0'] = Object.keys(pvp)
+      let { [shard]: { rooms } } = pvp
       state.pvp.rooms = rooms
       rooms.sort((a,b) => b.lastPvpTime - a.lastPvpTime)
+      const now = Date.now()
+      const append = rooms.filter(r => r.lastPvpTime > state.gameTime - 50).map(r => `${now},${r._id},${r.lastPvpTime}\n`).join('')
+      fs.appendFile('pvp.csv', append, () => {})
       rooms = rooms.filter(r => r.lastPvpTime > state.gameTime - 10)
       let room = ''
       if (chatRoom && chatRoomTimeout > Date.now()) {
@@ -224,29 +239,33 @@ async function setRoom(room) {
     currentTerrain = terrain
   }
   if (room !== currentRoom) {
+    await api.socket.unsubscribe(`room:${state.room}`)
     console.log(`sub ${room}`)
     currentRoom = room
-    api.socket.subscribe(`room:${room}`)
+    await api.socket.subscribe(`room:${room}`)
   }
 }
 
 async function resetState() {
   Object.assign(state, {
-    objects: [],
+    // objects: [],
     users: {
       '2': { _id: '2', username: 'Invader', usernameLower: 'invader', cpu: 100, cpuAvailable: 10000, gcl: 13966610.2, active: 0 },
       '3': { _id: '3', username: 'Source Keeper', usernameLower: 'source keeper', cpu: 100, cpuAvailable: 10000, gcl: 13966610.2, active: 0 },
     },
     room: currentRoom
   })
-  if (renderer) {
-    renderer.applyState(state, 0)
-  }
   cachedObjects = {}
+  if (renderer) {
+    renderer.erase()
+    // renderer.applyState(state, 0)
+  }
+  // await sleep(100)
 }
 
 async function run() {
   api = await ScreepsAPI.fromConfig("botarena",'screeps-cap')
+  // await api.raw.register.submit(api.opts.username, api.opts.username, api.opts.username, { main: '' })
   const { twitch, chatTimeout = 20 } = api.appConfig
   if (twitch) {
     const Bot = new TwitchBot(twitch)
@@ -262,6 +281,7 @@ async function run() {
         setRoom(room)
         chatRoom = room
         chatRoomTimeout = Date.now() + (chatTimeout * 1000)
+        Bot.say(`Switching to room ${room} on tick ${state.gameTime}`)
       }
     })
   }
@@ -276,33 +296,50 @@ async function run() {
       width: view.offsetWidth,
       height: view.offsetHeight
     },
-    autoFocus: false,
+    // autoFocus: false,
     resourceMap,
     rescaleResources,
     worldConfigs,
     onGameLoop: () => {},
     countMetrics: false,
-    fitToWorld: {
-      width: 50,
-      height: 50
-    },
+    // fitToWorld: {
+    //   width: 50,
+    //   height: 50
+    // },
     useDefaultLogger: false, //true,
-    backgroundColor: 0x555555
+    backgroundColor: 0x000000
+    // backgroundColor: 0x505050
   })
   await renderer.init(view)
+  { 
+    const t = []
+    for(let x = 0; x < 50; x++) {
+      for(let y = 0; y < 50; y++) {
+        t.push({ type: 'wall', x, y, room: 'E0N0' })
+      }
+    }
+    renderer.setTerrain(t)
+  }
   renderer.resize()
+  renderer.zoomLevel = 0.19 //view.offsetHeight / 5000
+  console.log(renderer.zoomLevel, view.offsetWidth, view.clientWidth991)
   await api.socket.connect()
   api.socket.on('message', async ({ type, channel, id, data, data: { gameTime=0, info, objects, users = {}, visual } = {} }) => {
-    if(type !== 'room') return
-    if(id !== currentRoom) return
-    let tickSpeed = 1
+    if (type !== 'room') return
+    if (state.reseting) return console.log('racing')
+    if (id !== currentRoom) return await api.socket.unsubscribe(`room:${id}`)
+    let { tick: tickSpeed = 1 } = await api.req('GET', '/api/game/tick')
+    // let tickSpeed = 0.3
     if(state.room !== currentRoom) {
       tickSpeed = 0
       console.log(`reset`)
       await api.socket.unsubscribe(`room:${state.room}`)
-      await resetState()
-      console.log('setTerrain')
-      await renderer.setTerrain(currentTerrain)
+      await Promise.all([
+        resetState(),
+        renderer.setTerrain(currentTerrain)
+      ])
+      console.log('setTerrain', currentTerrain)
+      state.reseting = true
       const [,controller] = Object.entries(objects).find(([,obj]) => obj && obj.type == 'controller') || []
       worldConfigs.gameData.player = ''
       if (controller) {
@@ -313,26 +350,32 @@ async function run() {
           worldConfigs.gameData.player = controller.reservation.user
         }
       }
+      delete state.reseting
     }
     for (const k in users) {
       state.users[k] = users[k]
     }
     for (const [id, diff] of Object.entries(objects)) {
       const cobj = cachedObjects[id] = cachedObjects[id] || {}
-      if (diff) {
-        cachedObjects[id] = Object.assign({}, cobj, diff)
-      } else {
+      if (diff === null) {
         delete cachedObjects[id]
+      } else {
+        cachedObjects[id] = Object.assign({}, cobj, diff)
       }
     }
-    state.objects = Object.entries(cachedObjects).map(([,e]) => e)
     state.gameTime = gameTime || state.gameTime
     try {
-      renderer.applyState(state, tickSpeed)
+      const objects = Array.from(Object.values(cachedObjects))
+      const ns = Object.assign({ objects }, state)
+      console.log(ns)
+      await renderer.applyState(ns, tickSpeed / 1000)
     }catch(e) {
       console.error('Error in update', e)
-      state.room = ''
-      setRoom(currentRoom) // Reset the view
+      await api.socket.unsubscribe(`room:${state.room}`)
+      await sleep(100)
+      const r = currentRoom
+      state.room = currentRoom = ''
+      setRoom(r) // Reset the view
     }
   })
   console.log('Complete!')

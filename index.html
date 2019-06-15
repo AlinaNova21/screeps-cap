@@ -4,7 +4,9 @@
   </head>
   <body>
     <div class="container">
-      <div class="spacer"></div>
+      <div id="leftDiv">
+        <webview id="map" src="https://screeps-shot.screepspl.us/https/botarena.screepspl.us/443/viewer"></webview>
+      </div>
       <div id="mainDiv">
         <div id="usersDiv"></div>
       </div>
@@ -16,7 +18,7 @@
       <div>https://github.com/ags131/screeps-cap</div>
     </div>
     <script src="node_modules/vue/dist/vue.min.js"></script>
-    <script src="index.js"></script>
+    <script src="index.js" defer></script>
     <style>
       body {
         margin:0;
@@ -48,6 +50,11 @@
         right: 0;
         color: white;
       }
+      #map {
+        position: relative;
+        width: calc(50px * 11 * 0.9);
+        height: calc(50px * 11 * 0.9);
+      }
       #mainDiv {
         /*
         position: fixed;
@@ -62,6 +69,7 @@
         width: calc(100vh - 20px);
         height: calc(100vh - 20px);
         position: relative;
+        min-width: 1000px;
       }
       #infoDiv {
         /*
@@ -88,7 +96,7 @@
       }
       .battles-enter, .battles-leave-to /* .list-leave-active below version 2.1.8 */ {
         opacity: 0;
-        transform: translateY(100px);
+        transform: translateY(50px);
       }
       .battles-move {
         transition: transform 1s;
@@ -98,7 +106,7 @@
       }
       .users-enter, .users-leave-to /* .list-leave-active below version 2.1.8 */ {
         opacity: 0;
-        transform: translateY(-100px);
+        transform: translateY(-50px);
       }
       .users-move {
         transition: transform 1s;
