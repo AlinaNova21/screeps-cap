@@ -22,7 +22,7 @@ let state = {
 }
 let chatRoom = ''
 let chatRoomTimeout = 0
-
+let mapRoomsCache = null
 const ROOM_SWAP_INTERVAL = 10000
 resetState()
 
@@ -398,52 +398,49 @@ function XYFromRoom(room) {
 }
 
 async function getMapRooms(api, shard = 'shard0') {
-  let visited = {}
-  console.log('Scanning sectors')
-  const sectors = await scanSectors()
-  let roomsToScan = []
-  console.log('Sectors found:', sectors)
-  for (let room of sectors) {
-    let { x, y } = XYFromRoom(room)
-    for (let xx = 0; xx < 12; xx++) {
-      for (let yy = 0; yy < 12; yy++) {
-        let room = XYToRoom(x + xx - 6, y + yy - 6)
-        roomsToScan.push(room)
+  if (!mapRoomsCache) {
+    console.log('Scanning sectors')
+    const sectors = await scanSectors()
+    let roomsToScan = []
+    console.log('Sectors found:', sectors)
+    for (let room of sectors) {
+      let { x, y } = XYFromRoom(room)
+      for (let xx = 0; xx < 12; xx++) {
+        for (let yy = 0; yy < 12; yy++) {
+          let room = XYToRoom(x + xx - 6, y + yy - 6)
+          roomsToScan.push(room)
+        }
       }
     }
+    mapRoomsCache = roomsToScan
   }
-  const { rooms, users } = await scan(roomsToScan)
+  const { rooms, users } = await scan(mapRoomsCache)
   console.log(`GetMapRooms found ${rooms.length} rooms`)
   return { rooms, users }
 
   async function scanSectors() {
-    let rooms = []
+    const rooms = []
     for (let yo = -10; yo <= 10; yo++) {
       for (let xo = -10; xo <= 10; xo++) {
-        let room = XYToRoom((xo * 10) + 5, (yo * 10) + 5)
+        const room = XYToRoom((xo * 10) + 5, (yo * 10) + 5)
         rooms.push(room)
       }
     }
-    let result = await scan(rooms)
+    const result = await scan(rooms)
     return result.rooms.map(r => r.id)
   }
 
   async function scan(rooms = []) {
-    // console.log('Scanning', rooms)
-    // rooms = rooms.filter(r => !visited[r])
-    if (!rooms.length) return []
-    let result = await api.raw.game.mapStats(rooms, shard, 'owner0')
-    let ret = []
-    // console.log(result)
-    for (let k in result.stats) {
-      let { status, own } = result.stats[k]
+    if (!rooms.length) return { rooms: [], users: {} }
+    const result = await api.raw.game.mapStats(rooms, shard, 'owner0')
+    const ret = []
+    for (const k in result.stats) {
+      const { status, own } = result.stats[k]
       result.stats[k].id = k
       if (status === 'normal') {
-        visited[k] = true
         ret.push(result.stats[k])
       }
     }
-    // console.log('Found', ret)
     return { rooms: ret, users: result.users }
   }
 }
@@ -531,18 +528,21 @@ async function minimap() {
     mapRooms.set(room.id, r)
     miniMap.addChild(r.cont)
   }
+  let lastRoom = ''
   setInterval(async () => {
+    if (currentRoom === lastRoom) return
+    if (!currentRoom) return
+    lastRoom = currentRoom
     const { rooms, users } = await getMapRooms(api)
     for (const room of rooms) {
       const r = mapRooms.get(room.id)
       r.update(room, users)
     }
-  }, 10000)
+  }, 1000)
   const highlight = new PIXI.Graphics()
   // highlight.alpha = 0.5
   miniMap.addChild(highlight)
   setInterval(async () => {
-    const { x, y } = XYFromRoom(currentRoom)
     highlight.clear()
     state.pvp.rooms.forEach(({ _id: room, lastPvpTime }) => {
       const ticks = Math.max(0, state.gameTime - lastPvpTime)
@@ -551,9 +551,12 @@ async function minimap() {
         .lineStyle(1, 0xFF0000, 1 - (ticks / 100))
         .drawRect((x * 50), (y * 50), 50, 50)
     })
-    highlight
-      .lineStyle(1, 0x00FF00, 0.6)
-      .drawRect((x * 50), (y * 50), 50, 50)
+    if (currentRoom) {
+      const { x, y } = XYFromRoom(currentRoom)
+      highlight
+        .lineStyle(1, 0x00FF00, 0.6)
+        .drawRect((x * 50), (y * 50), 50, 50)
+    }
   }, 500)
   const width = 600
   const xOffset = 615
