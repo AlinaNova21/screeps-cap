@@ -4,9 +4,9 @@
   </head>
   <body>
     <div class="container">
-      <div id="leftDiv">
+      <!-- <div id="leftDiv">
         <webview id="map" src="https://screeps-shot.screepspl.us/https/botarena.screepspl.us/443/viewer"></webview>
-      </div>
+      </div> -->
       <div id="mainDiv">
         <div id="usersDiv"></div>
       </div>
@@ -38,7 +38,7 @@
         color: white;
         position: absolute;
         top: 10px;
-        left: 10px;
+        left: 635px;
       }
       .badge {
         width: 16px;
@@ -63,7 +63,8 @@
         right: 100px;
         bottom: 10px
         */
-        flex: 0 0 calc(100vh - 20px);
+        /* flex: 0 0 calc(100vh - 20px); */
+        flex: 3;
         margin-top: 10px;
         margin-bottom: 10px;
         width: calc(100vh - 20px);
@@ -72,6 +73,7 @@
         min-width: 1000px;
       }
       #infoDiv {
+        flex: 1;
         /*
         position: fixed;
         top: 0;

@@ -1,4 +1,6 @@
 const path = require('path')
+const seedrandom = require('seedrandom')
+const randomColor = require('randomcolor')
 const fs = require('fs')
 const TwitchBot = require('twitch-bot')
 const { ScreepsAPI } = require('screeps-api')
@@ -23,15 +25,6 @@ let chatRoomTimeout = 0
 
 const ROOM_SWAP_INTERVAL = 10000
 resetState()
-const roomList = []
-for(let y=0; y < 21; y++) {
-  for(let x=0; x < 21; x++) {
-    roomList.push(`E${x}S${y}`)
-    roomList.push(`W${x}S${y}`)
-    roomList.push(`E${x}N${y}`)
-    roomList.push(`W${x}N${y}`)
-  }
-}
 
 Vue.component('ba-header', {
   props: ['state'],
@@ -70,7 +63,7 @@ Vue.component('scoreboard', {
   data() {
     return {
       updateInterval: null,
-      stats: {},
+      rooms: [],
       users: {}
     }
   },
@@ -85,8 +78,7 @@ Vue.component('scoreboard', {
     records() {
       const records = []
       const uids = {}
-      for (let room in this.stats) {
-        const { own } = this.stats[room]
+      for (const { own } of this.rooms) {
         if (!own || !own.level) continue
         if (uids[own.user]) {
           uids[own.user].rooms++
@@ -118,8 +110,10 @@ Vue.component('scoreboard', {
     },
     async update() {
       while(!api) await sleep(1000)
-      const { stats, users } = await api.raw.game.mapStats(roomList, 'owner0')
-      this.stats = stats
+      const { rooms, users } = await getMapRooms(api)
+      // const { stats, users } = await api.raw.game.mapStats(roomList, 'owner0')
+      // this.stats = stats
+      this.rooms = rooms
       this.users = users
     }
   }
@@ -209,14 +203,9 @@ async function roomSwap() {
         const { _id, lastPvpTime: time } = rooms[Math.floor(Math.random() * rooms.length)]
         room = _id
       } else {
-        const { stats } = await api.raw.game.mapStats(roomList, 'owner0')
-        for(let k in stats) {
-          const r = stats[k]
-          if (r.own && r.own.level) {
-            rooms.push(k)
-          }
-        }
-        console.log(stats)
+        // const { stats } = await api.raw.game.mapStats(roomList, 'owner0')
+        const { rooms: rawRooms } = await getMapRooms(api)
+        rooms = rawRooms.filter(r => r.own && r.own.level)
         room = rooms[Math.floor(Math.random() * rooms.length)]
       }
       await setRoom(room)
@@ -285,6 +274,7 @@ async function run() {
       }
     })
   }
+  
   const view = mainDiv
   cachedObjects = {}
   const say = worldConfigs.metadata.objects.creep.processors.find(p => p.type === 'say')
@@ -315,14 +305,14 @@ async function run() {
     const t = []
     for(let x = 0; x < 50; x++) {
       for(let y = 0; y < 50; y++) {
-        t.push({ type: 'wall', x, y, room: 'E0N0' })
+        t.push({ type: 'swamp', x, y, room: 'E0N0' })
       }
     }
     renderer.setTerrain(t)
   }
   renderer.resize()
-  renderer.zoomLevel = 0.19 //view.offsetHeight / 5000
-  console.log(renderer.zoomLevel, view.offsetWidth, view.clientWidth991)
+  renderer.zoomLevel = 0.16 //view.offsetHeight / 5000
+  console.log(renderer.zoomLevel, view.offsetWidth, view.clientWidth)
   await api.socket.connect()
   api.socket.on('message', async ({ type, channel, id, data, data: { gameTime=0, info, objects, users = {}, visual } = {} }) => {
     if (type !== 'room') return
@@ -367,7 +357,6 @@ async function run() {
     try {
       const objects = Array.from(Object.values(cachedObjects))
       const ns = Object.assign({ objects }, state)
-      console.log(ns)
       await renderer.applyState(ns, tickSpeed / 1000)
     }catch(e) {
       console.error('Error in update', e)
@@ -379,7 +368,205 @@ async function run() {
     }
   })
   console.log('Complete!')
+  await api.me()
+  await minimap()
   roomSwap()
+}
+
+
+function XYToRoom(x, y) {
+  let dx = 'E'
+  let dy = 'S'
+  if (x < 0) {
+    x = -x - 1
+    dx = 'W'
+  }
+  if (y < 0) {
+    y = -y - 1
+    dy = 'N'
+  }
+  return `${dx}${x}${dy}${y}`
+}
+
+function XYFromRoom(room) {
+  let [, dx, x, dy, y] = room.match(/^([WE])(\d+)([NS])(\d+)$/)
+  x = parseInt(x)
+  y = parseInt(y)
+  if (dx === 'W') x = -x - 1
+  if (dy === 'N') y = -y - 1
+  return { x, y }
+}
+
+async function getMapRooms(api, shard = 'shard0') {
+  let visited = {}
+  console.log('Scanning sectors')
+  const sectors = await scanSectors()
+  let roomsToScan = []
+  console.log('Sectors found:', sectors)
+  for (let room of sectors) {
+    let { x, y } = XYFromRoom(room)
+    for (let xx = 0; xx < 12; xx++) {
+      for (let yy = 0; yy < 12; yy++) {
+        let room = XYToRoom(x + xx - 6, y + yy - 6)
+        roomsToScan.push(room)
+      }
+    }
+  }
+  const { rooms, users } = await scan(roomsToScan)
+  console.log(`GetMapRooms found ${rooms.length} rooms`)
+  return { rooms, users }
+
+  async function scanSectors() {
+    let rooms = []
+    for (let yo = -10; yo <= 10; yo++) {
+      for (let xo = -10; xo <= 10; xo++) {
+        let room = XYToRoom((xo * 10) + 5, (yo * 10) + 5)
+        rooms.push(room)
+      }
+    }
+    let result = await scan(rooms)
+    return result.rooms.map(r => r.id)
+  }
+
+  async function scan(rooms = []) {
+    // console.log('Scanning', rooms)
+    // rooms = rooms.filter(r => !visited[r])
+    if (!rooms.length) return []
+    let result = await api.raw.game.mapStats(rooms, shard, 'owner0')
+    let ret = []
+    // console.log(result)
+    for (let k in result.stats) {
+      let { status, own } = result.stats[k]
+      result.stats[k].id = k
+      if (status === 'normal') {
+        visited[k] = true
+        ret.push(result.stats[k])
+      }
+    }
+    // console.log('Found', ret)
+    return { rooms: ret, users: result.users }
+  }
+}
+
+async function minimap() {
+  const colors = {
+    2: '#FF9600', // invader
+    3: '#FF9600', // source keeper
+    w: '#000000', // wall
+    r: '#3C3C3C', // road
+    pb: '#FFFFFF', // powerbank
+    p: '#00C8FF', // portal
+    s: '#FFF246', // source
+    m: '#AAAAAA', // mineral
+    c: '#505050', // controller
+    k: '#640000' // keeperLair
+  }
+  class MiniMapRoom {
+    constructor(api, id, { colors }) {
+      this.api = api
+      this.id = id
+      this.colors = colors
+      this.api.socket.subscribe(`roomMap2:${id}`, (e) => this.handle(e))
+      this.cont = new PIXI.Container()
+      const { x, y } = XYFromRoom(id)
+      this.cont.x = x * 50
+      this.cont.y = y * 50
+      this.cont.width = 50
+      this.cont.height = 50
+      this.img = PIXI.Sprite.from(`${api.opts.url}assets/map/${id}.png`)
+      this.img.width = 50
+      this.img.height = 50
+      this.cont.addChild(this.img)
+      this.overlay = new PIXI.Graphics()
+      this.cont.addChild(this.overlay)
+      this.badge = new PIXI.Sprite()
+      this.badge.anchor.x = 0.5
+      this.badge.anchor.y = 0.5
+      this.badge.x = 25
+      this.badge.y = 25
+      this.cont.addChild(this.badge)
+    }
+    getColor (identifier) {
+      if (!this.colors[identifier]) {
+        const rng = seedrandom(identifier)
+        const seed = rng().toString()
+        this.colors[identifier] = randomColor({
+          luminosity: 'bright',
+          seed
+        })
+      }
+      return parseInt(colors[identifier].slice(1), 16)
+    }	
+    handle({ id, data }) {
+      const { overlay } = this
+      overlay.clear()
+      for (const k in data) {
+        const arr = data[k]
+        overlay.beginFill(this.getColor(k))
+        arr.forEach(([x, y]) => overlay.drawRect(x, y, 1, 1))
+        overlay.endFill()
+      }
+    }
+    update(roomInfo, users) {
+      this.badge.visible = !!roomInfo.own
+      if (roomInfo.own) {
+        const user = users[roomInfo.own.user]
+        const badgeURL = `${this.api.opts.url}api/user/badge-svg?username=${user.username}`
+        this.badge.texture = PIXI.Texture.from(badgeURL)
+        const size = (roomInfo.own.level * (20 / 8)) + 15
+        this.badge.width = size
+        this.badge.height = size
+        this.badge.alpha = roomInfo.own.level ? 0.4 : 0.3
+      }
+    }
+  }
+  const { rooms, users } = await getMapRooms(api)
+  const mapRooms = new Map()
+  const miniMap = new PIXI.Container()
+  window.miniMap = miniMap
+  renderer.app.stage.addChild(miniMap)
+  for (const room of rooms) {
+    const r = new MiniMapRoom(api, room.id, { colors })
+    r.update(room, users)
+    mapRooms.set(room.id, r)
+    miniMap.addChild(r.cont)
+  }
+  setInterval(async () => {
+    const { rooms, users } = await getMapRooms(api)
+    for (const room of rooms) {
+      const r = mapRooms.get(room.id)
+      r.update(room, users)
+    }
+  }, 10000)
+  const highlight = new PIXI.Graphics()
+  // highlight.alpha = 0.5
+  miniMap.addChild(highlight)
+  setInterval(async () => {
+    const { x, y } = XYFromRoom(currentRoom)
+    highlight.clear()
+    state.pvp.rooms.forEach(({ _id: room, lastPvpTime }) => {
+      const ticks = Math.max(0, state.gameTime - lastPvpTime)
+      const { x, y } = XYFromRoom(room)
+      highlight
+        .lineStyle(1, 0xFF0000, 1 - (ticks / 100))
+        .drawRect((x * 50), (y * 50), 50, 50)
+    })
+    highlight
+      .lineStyle(1, 0x00FF00, 0.6)
+      .drawRect((x * 50), (y * 50), 50, 50)
+  }, 500)
+  const width = 600
+  const xOffset = 615
+  miniMap.x = -xOffset * (1 / renderer.app.stage.scale.x)
+  miniMap.width = width * (1 / renderer.app.stage.scale.x)
+  miniMap.scale.y = miniMap.scale.x
+  renderer.app.stage.position.x = xOffset
+  renderer.app.stage.mask = undefined
+  // const mask = new PIXI.Graphics()
+  // const { CELL_SIZE, VIEW_BOX } = worldConfigs
+  // mask.drawRect(-CELL_SIZE / 2, -CELL_SIZE / 2, VIEW_BOX, VIEW_BOX)
+  // mask.drawRect(miniMap.x, miniMap.y, miniMap.width, miniMap.height)
+  // miniMap.addChild(mask)
 }
 
 function sleep(ms) {
