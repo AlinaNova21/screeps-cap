@@ -311,7 +311,7 @@ async function run() {
     renderer.setTerrain(t)
   }
   renderer.resize()
-  renderer.zoomLevel = 0.16 //view.offsetHeight / 5000
+  renderer.zoomLevel = 0.19 //view.offsetHeight / 5000
   console.log(renderer.zoomLevel, view.offsetWidth, view.clientWidth)
   await api.socket.connect()
   api.socket.on('message', async ({ type, channel, id, data, data: { gameTime=0, info, objects, users = {}, visual } = {} }) => {
