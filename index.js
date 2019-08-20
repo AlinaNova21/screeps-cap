@@ -9,7 +9,7 @@ const worldConfigs = require('./assets/worldConfigs')
 const { resourceMap, rescaleResources } = require('./assets/resourceMap')
 const argv = require('electron').remote.process.argv
 
-let api = null 
+let api = null
 let renderer = null
 let currentRoom = ''
 let currentTerrain = null
@@ -24,15 +24,20 @@ let chatRoom = ''
 let chatRoomTimeout = 0
 let mapRoomsCache = null
 const ROOM_SWAP_INTERVAL = 10000
+const teamMap = [
+  { name: 'Alpha', users: ['geir', 'qgazq', 'eiskalt', 'dignissi'] },
+  { name: 'Bravo', users: ['tigga', 'robalian', 'devnix', 'davaned'] },
+  { name: 'Charlie', users: ['saruss', 'shibdib', 'sergey', 'snowgoose'] },
+]
 resetState()
 
 Vue.component('ba-header', {
   props: ['state'],
   template: `
     <div>
-      <div style="font-size: 32pt">BotArena</div>
-      <div>https://screepswargames.us/</div>
-      <div>http://chat.screeps.com #botarena</div>
+      <div style="font-size: 32pt">Screeps Warfare Championship</div>
+      <div>https://screepspl.us/events/</div>
+      <div>http://chat.screeps.com #swc</div>
       <div>Room: {{state.room}}</div>
       <div>Time: {{state.gameTime}}</div>
     </div>`,
@@ -49,12 +54,26 @@ Vue.component('scoreboard', {
           <th style="text-align: center">Rooms</th>
           <th style="text-align: center">Score</th>
         </tr>
-        <tr v-for="(record, index) in slicedRecords" :key="record.username">
+        <tr v-for="(record, index) in slicedRecords" :key="record.username" v-if="!slicedTeams.length">
           <td>{{ index+1 }})</td>
           <td><img class="badge" :src="badgeURL(record.username)">{{record.username}}</td>
           <td style="text-align: center">{{record.rooms}}</td>
           <td style="text-align: center">{{record.score}}</td>
         </tr>
+        <template v-for="(team, index) in slicedTeams" :key="team.name">
+          <tr>
+            <td>{{ index+1 }})</td>
+            <td>{{team.name}}</td>
+            <td style="text-align: center">{{team.rooms}}</td>
+            <td style="text-align: center">{{team.score}}</td>
+          </tr>
+          <tr v-for="(record, index) in team.users" :key="record.username">
+            <td></td>
+            <td><img class="badge" :src="badgeURL(record.username)">{{record.username}}</td>
+            <td style="text-align: center">{{record.rooms}}</td>
+            <td style="text-align: center">{{record.score}}</td>
+          </tr>
+        </template>
       </table>
       <div v-if="records.length > 15">Only top 15 players listed</div>
       <div>Note: Score does not check for active spawns</div>
@@ -92,16 +111,27 @@ Vue.component('scoreboard', {
         }
       }
       const data = Object.keys(uids).map(k => uids[k])
-      data.sort((a,b) => b.score - a.score)
-      for(let record of data) {
+      data.sort((a, b) => b.score - a.score)
+      for (let record of data) {
         const { score, rooms, uid } = record
         const { username } = this.users[uid]
-       records.push({ username, rooms, score })
+        records.push({ username, rooms, score })
       }
       return records
     },
     slicedRecords() {
       return this.records.slice(0, 15)
+    },
+    slicedTeams() {
+      const teams = teamMap.map(t => {
+        const users = t.users.map(user => this.records.find(u => u.username.match(new RegExp(user, 'i')))).filter(Boolean)
+        const rooms = users.reduce((l, u) => l + u.rooms, 0)
+        const score = users.reduce((l, u) => l + u.score, 0)
+        users.sort((a, b) => b.score - a.score)
+        return { name: t.name, users, rooms, score }
+      })
+      teams.sort((a, b) => b.score - a.score)
+      return teams
     }
   },
   methods: {
@@ -109,7 +139,7 @@ Vue.component('scoreboard', {
       return `${api.opts.url}api/user/badge-svg?username=${username}`
     },
     async update() {
-      while(!api) await sleep(1000)
+      while (!api) await sleep(1000)
       const { rooms, users } = await getMapRooms(api)
       // const { stats, users } = await api.raw.game.mapStats(roomList, 'owner0')
       // this.stats = stats
@@ -172,7 +202,7 @@ const app2 = new Vue({
     return { state }
   },
   computed: {
-    users () {
+    users() {
       return Object.values(this.state.users).filter(u => u._id.length > 1)
     }
   }
@@ -185,16 +215,16 @@ document.addEventListener('DOMContentLoaded', () => {
 })
 async function roomSwap() {
   // return setRoom('E7N5')
-  while(true) {
+  while (true) {
     try {
-      const { pvp } =  await api.raw.experimental.pvp(100)
-      const [shard='shard0'] = Object.keys(pvp)
+      const { pvp } = await api.raw.experimental.pvp(100)
+      const [shard = 'shard0'] = Object.keys(pvp)
       let { [shard]: { rooms } } = pvp
       state.pvp.rooms = rooms
-      rooms.sort((a,b) => b.lastPvpTime - a.lastPvpTime)
+      rooms.sort((a, b) => b.lastPvpTime - a.lastPvpTime)
       const now = Date.now()
       const append = rooms.filter(r => r.lastPvpTime > state.gameTime - 50).map(r => `${now},${r._id},${r.lastPvpTime}\n`).join('')
-      fs.appendFile('pvp.csv', append, () => {})
+      fs.appendFile('pvp.csv', append, () => { })
       rooms = rooms.filter(r => r.lastPvpTime > state.gameTime - 10)
       let room = ''
       if (chatRoom && chatRoomTimeout > Date.now()) {
@@ -206,10 +236,10 @@ async function roomSwap() {
         // const { stats } = await api.raw.game.mapStats(roomList, 'owner0')
         const { rooms: rawRooms } = await getMapRooms(api)
         rooms = rawRooms.filter(r => r.own && r.own.level)
-        room = rooms[Math.floor(Math.random() * rooms.length)]
+        room = rooms[Math.floor(Math.random() * rooms.length)].id
       }
       await setRoom(room)
-    } catch(e) { console.error('roomSwap', e) }
+    } catch (e) { console.error('roomSwap', e) }
     await sleep(ROOM_SWAP_INTERVAL)
   }
 }
@@ -253,9 +283,9 @@ async function resetState() {
 }
 
 async function run() {
-  api = await ScreepsAPI.fromConfig("botarena",'screeps-cap')
+  api = await ScreepsAPI.fromConfig('botarena', 'screeps-cap')
   // await api.raw.register.submit(api.opts.username, api.opts.username, api.opts.username, { main: '' })
-  const { twitch, chatTimeout = 20 } = api.appConfig
+  const { twitch, chatTimeout = 60 } = api.appConfig
   if (twitch) {
     const Bot = new TwitchBot(twitch)
     Bot.on('join', channel => {
@@ -265,7 +295,7 @@ async function run() {
       console.log(err)
     })
     Bot.on('message', chatter => {
-      const [,room] = chatter.message.match(/^!room ([EW]\d+[NS]\d+)$/) || []
+      const [, room] = chatter.message.match(/^!room ([EW]\d+[NS]\d+)$/) || []
       if (room) {
         setRoom(room)
         chatRoom = room
@@ -274,7 +304,7 @@ async function run() {
       }
     })
   }
-  
+
   const view = mainDiv
   cachedObjects = {}
   const say = worldConfigs.metadata.objects.creep.processors.find(p => p.type === 'say')
@@ -290,7 +320,7 @@ async function run() {
     resourceMap,
     rescaleResources,
     worldConfigs,
-    onGameLoop: () => {},
+    onGameLoop: () => { },
     countMetrics: false,
     // fitToWorld: {
     //   width: 50,
@@ -301,10 +331,10 @@ async function run() {
     // backgroundColor: 0x505050
   })
   await renderer.init(view)
-  { 
+  {
     const t = []
-    for(let x = 0; x < 50; x++) {
-      for(let y = 0; y < 50; y++) {
+    for (let x = 0; x < 50; x++) {
+      for (let y = 0; y < 50; y++) {
         t.push({ type: 'swamp', x, y, room: 'E0N0' })
       }
     }
@@ -314,13 +344,13 @@ async function run() {
   renderer.zoomLevel = 0.19 //view.offsetHeight / 5000
   console.log(renderer.zoomLevel, view.offsetWidth, view.clientWidth)
   await api.socket.connect()
-  api.socket.on('message', async ({ type, channel, id, data, data: { gameTime=0, info, objects, users = {}, visual } = {} }) => {
+  api.socket.on('message', async ({ type, channel, id, data, data: { gameTime = 0, info, objects, users = {}, visual } = {} }) => {
     if (type !== 'room') return
     if (state.reseting) return console.log('racing')
     if (id !== currentRoom) return await api.socket.unsubscribe(`room:${id}`)
     let { tick: tickSpeed = 1 } = await api.req('GET', '/api/game/tick')
     // let tickSpeed = 0.3
-    if(state.room !== currentRoom) {
+    if (state.room !== currentRoom) {
       tickSpeed = 0
       console.log(`reset`)
       await api.socket.unsubscribe(`room:${state.room}`)
@@ -330,7 +360,7 @@ async function run() {
       ])
       console.log('setTerrain', currentTerrain)
       state.reseting = true
-      const [,controller] = Object.entries(objects).find(([,obj]) => obj && obj.type == 'controller') || []
+      const [, controller] = Object.entries(objects).find(([, obj]) => obj && obj.type == 'controller') || []
       worldConfigs.gameData.player = ''
       if (controller) {
         if (controller.user) {
@@ -358,7 +388,7 @@ async function run() {
       const objects = Array.from(Object.values(cachedObjects))
       const ns = Object.assign({ objects }, state)
       await renderer.applyState(ns, tickSpeed / 1000)
-    }catch(e) {
+    } catch (e) {
       console.error('Error in update', e)
       await api.socket.unsubscribe(`room:${state.room}`)
       await sleep(100)
@@ -483,7 +513,7 @@ async function minimap() {
       this.badge.y = 25
       this.cont.addChild(this.badge)
     }
-    getColor (identifier) {
+    getColor(identifier) {
       if (!this.colors[identifier]) {
         const rng = seedrandom(identifier)
         const seed = rng().toString()
@@ -493,7 +523,7 @@ async function minimap() {
         })
       }
       return parseInt(colors[identifier].slice(1), 16)
-    }	
+    }
     handle({ id, data }) {
       const { overlay } = this
       overlay.clear()
@@ -513,7 +543,7 @@ async function minimap() {
         const size = (roomInfo.own.level * (20 / 8)) + 15
         this.badge.width = size
         this.badge.height = size
-        this.badge.alpha = roomInfo.own.level ? 0.4 : 0.3
+        this.badge.alpha = roomInfo.own.level ? 0.6 : 0.5
       }
     }
   }
@@ -558,11 +588,13 @@ async function minimap() {
         .drawRect((x * 50), (y * 50), 50, 50)
     }
   }, 500)
-  const width = 600
-  const xOffset = 615
+  const width = 580
+  const xOffset = width + 10
   miniMap.x = -xOffset * (1 / renderer.app.stage.scale.x)
   miniMap.width = width * (1 / renderer.app.stage.scale.x)
   miniMap.scale.y = miniMap.scale.x
+  miniMap.x += 50 * 10.5 * miniMap.scale.x
+  miniMap.y += 50 * 10.5 * miniMap.scale.y
   renderer.app.stage.position.x = xOffset
   renderer.app.stage.mask = undefined
   // const mask = new PIXI.Graphics()
