@@ -25,9 +25,10 @@ let chatRoomTimeout = 0
 let mapRoomsCache = null
 const ROOM_SWAP_INTERVAL = 10000
 const teamMap = [
-  { name: 'Alpha', users: ['geir', 'qgazq', 'eiskalt', 'dignissi'] },
-  { name: 'Bravo', users: ['tigga', 'robalian', 'devnix', 'davaned'] },
-  { name: 'Charlie', users: ['saruss', 'shibdib', 'sergey', 'snowgoose'] },
+  { name: 'Alpha', users: ['robalian', 'qnz', 'yoner'] },
+  { name: 'Bravo', users: ['tigga', 'sergey', 'snowgoose'] },
+  { name: 'Charlie', users: ['saruss','qzarstb', 'rayderblitz'] },
+  { name: 'Delta', users: ['extreminador', 'geir', 'szpadel'] },
 ]
 resetState()
 
@@ -593,7 +594,7 @@ async function minimap() {
   miniMap.x = -xOffset * (1 / renderer.app.stage.scale.x)
   miniMap.width = width * (1 / renderer.app.stage.scale.x)
   miniMap.scale.y = miniMap.scale.x
-  miniMap.x += 50 * 10.5 * miniMap.scale.x
+  // miniMap.x += 50 * 10.5 * miniMap.scale.x
   miniMap.y += 50 * 10.5 * miniMap.scale.y
   renderer.app.stage.position.x = xOffset
   renderer.app.stage.mask = undefined
