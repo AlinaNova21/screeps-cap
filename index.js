@@ -236,7 +236,7 @@ async function roomSwap() {
       } else {
         // const { stats } = await api.raw.game.mapStats(roomList, 'owner0')
         const { rooms: rawRooms } = await getMapRooms(api)
-        rooms = rawRooms.filter(r => r.own && r.own.level && r.own.username !== 'Invader')
+        rooms = rawRooms.filter(r => r.own && r.own.level && r.own.user !== '2')
         room = rooms[Math.floor(Math.random() * rooms.length)].id
       }
       await setRoom(room)
