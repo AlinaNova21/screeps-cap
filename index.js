@@ -25,10 +25,10 @@ let chatRoomTimeout = 0
 let mapRoomsCache = null
 const ROOM_SWAP_INTERVAL = 10000
 const teamMap = [
-  { name: 'Alpha', users: ['robalian', 'qnz', 'yoner'] },
-  { name: 'Bravo', users: ['tigga', 'sergey', 'snowgoose'] },
-  { name: 'Charlie', users: ['saruss','qzarstb', 'rayderblitz'] },
-  { name: 'Delta', users: ['extreminador', 'geir', 'szpadel'] },
+  { name: 'Rob a Lion', users: ['robalian', 'qnz', 'yoner'] },
+  { name: 'No Name Team 2', users: ['tigga', 'sergey', 'snowgoose'] },
+  { name: 'Alphabet Nerds', users: ['saruss','qzarstb', 'rayderblitz'] },
+  { name: 'The Bee Team', users: ['extreminador', 'geir', 'szpadel'] },
 ]
 resetState()
 
@@ -236,7 +236,7 @@ async function roomSwap() {
       } else {
         // const { stats } = await api.raw.game.mapStats(roomList, 'owner0')
         const { rooms: rawRooms } = await getMapRooms(api)
-        rooms = rawRooms.filter(r => r.own && r.own.level)
+        rooms = rawRooms.filter(r => r.own && r.own.level && r.own.username !== 'Invader')
         room = rooms[Math.floor(Math.random() * rooms.length)].id
       }
       await setRoom(room)

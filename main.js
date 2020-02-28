@@ -7,7 +7,9 @@ let mainWindow
 const DEV = process.argv.includes('--dev')
 
 function createWindow () {
+  const displays = electron.screen.getAllDisplays()
   const { width, height } = electron.screen.getPrimaryDisplay().workAreaSize
+  
   mainWindow = new BrowserWindow({ 
     webgl: true,
     webSecurity: false,
@@ -15,6 +17,7 @@ function createWindow () {
     experimentalCanvasFeatures: true,
     offscreen: true,
     x:0, y:0,
+    fullscreen: true,
     width, height, 
     frame: DEV 
   })
