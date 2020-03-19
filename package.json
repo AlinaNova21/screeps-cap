@@ -5,7 +5,7 @@
   "license": "MIT",
   "scripts": {
     "_postinstall": "cp -f lib/* node_modules/electron/dist/",
-    "start": "electron . --ignore-gpu-blacklist",
+    "start": "electron . --ignore-gpu-blacklist | tee output.log",
     "dev": "electron . --ignore-gpu-blacklist --dev"
   },
   "dependencies": {

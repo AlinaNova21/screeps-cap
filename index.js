@@ -1,4 +1,6 @@
 const path = require('path')
+const _ = require('lodash')
+const child_process = require('child_process')
 const seedrandom = require('seedrandom')
 const randomColor = require('randomcolor')
 const fs = require('fs')
@@ -8,6 +10,14 @@ const { GameRenderer } = require('@screeps/renderer')
 const worldConfigs = require('./assets/worldConfigs')
 const { resourceMap, rescaleResources } = require('./assets/resourceMap')
 const argv = require('electron').remote.process.argv
+
+const origConsoleLog = console.log
+const log = (...args) => {
+  fs.appendFile('output.log', args.join(' ') + "\n", () => {})
+  origConsoleLog.apply(console, args)
+}
+console.log = (...a) => log(...a)
+console.error = (...a) => log(...a)
 
 let api = null
 let renderer = null
@@ -36,7 +46,7 @@ Vue.component('ba-header', {
   props: ['state'],
   template: `
     <div>
-      <div style="font-size: 32pt">Screeps Warfare Championship</div>
+      <div style="font-size: 24pt">Screeps Warfare Championship</div>
       <div>https://screepspl.us/events/</div>
       <div>http://chat.screeps.com #swc</div>
       <div>Room: {{state.room}}</div>
@@ -158,17 +168,26 @@ Vue.component("pvp-battles", {
       <transition-group name="battles">
         <div class="battle" v-for="b in battles" :key="b.room">
           <div class="room">{{ b.room }}</div>
+          <div class="badges"><img class="badge" v-for="u of b.participants" :key="u" :src="badgeURL(u)"></div>
+          <div class="classification">Class {{ b.classification }}</div>
           <div class="ticks">{{ b.ticks }} ticks ago</div>
         </div>
       </transition-group>
     </div>`,
   computed: {
     battles() {
-      return state.pvp.rooms.map(({ _id: room, lastPvpTime }) => {
+      return state.pvp.rooms.map(({ _id: room, lastPvpTime, classification, warpath: { defender = '', attackers = [] } = {} }) => {
         const ticks = Math.max(0, state.gameTime - lastPvpTime)
-        return { room, ticks }
+        const users = Object.values(state.users)
+        const participants = [defender, ...attackers].filter(Boolean)
+        return { room, ticks, classification, participants }
       })
     }
+  },
+  methods: {
+    badgeURL(username) {
+      return `${api.opts.url}api/user/badge-svg?username=${username}`
+    },
   }
 })
 
@@ -214,25 +233,47 @@ setTimeout(() => window.close(), 30 * 60 * 1000)
 document.addEventListener('DOMContentLoaded', () => {
   map.setZoomFactor(0.9)
 })
+const warpathCache = new Map()
+let bias = 0
 async function roomSwap() {
   // return setRoom('E7N5')
   while (true) {
     try {
-      const { pvp } = await api.raw.experimental.pvp(100)
+      const [{ pvp }, battles = {}] = await Promise.all([
+        api.raw.experimental.pvp(100),
+        warpath().catch(() => ({})) // Catch handles being ran in non-warpath capable setups
+      ])
       const [shard = 'shard0'] = Object.keys(pvp)
       let { [shard]: { rooms } } = pvp
+      const { [shard]: shardBattles = {} } = battles
+      for (const room in shardBattles) {
+        warpathCache.set(room, shardBattles[room])
+      }
       state.pvp.rooms = rooms
-      rooms.sort((a, b) => b.lastPvpTime - a.lastPvpTime)
+      rooms.forEach(room => {
+        room.warpath = warpathCache.get(room._id)
+        room.classification = room.warpath ? ''+room.warpath.classification : '?'
+        if (room.lastPvpTime > state.gameTime - 10) {
+          console.log(room)
+        }
+      })
+      const rank = ({ warpath: { classification = 0 } = {}, lastPvpTime }) => (classification * 1000) - (state.gameTime - lastPvpTime)
+      rooms.sort((a, b) => rank(b) - rank(a))
       const now = Date.now()
       const append = rooms.filter(r => r.lastPvpTime > state.gameTime - 50).map(r => `${now},${r._id},${r.lastPvpTime}\n`).join('')
       fs.appendFile('pvp.csv', append, () => { })
-      rooms = rooms.filter(r => r.lastPvpTime > state.gameTime - 10)
+      rooms = rooms.filter(r => r.lastPvpTime > state.gameTime - 20)
       let room = ''
       if (chatRoom && chatRoomTimeout > Date.now()) {
         room = chatRoom
       } else if (rooms.length) {
-        const { _id, lastPvpTime: time } = rooms[Math.floor(Math.random() * rooms.length)]
+        const { _id, lastPvpTime: time } = rooms[Math.floor(Math.random() * Math.min(bias, rooms.length))]
         room = _id
+        if (room === currentRoom) {
+          bias += 0.5
+        } else {
+          bias = 0
+        }
       } else {
         // const { stats } = await api.raw.game.mapStats(roomList, 'owner0')
         const { rooms: rawRooms } = await getMapRooms(api)
@@ -288,22 +329,30 @@ async function run() {
   // await api.raw.register.submit(api.opts.username, api.opts.username, api.opts.username, { main: '' })
   const { twitch, chatTimeout = 60 } = api.appConfig
   if (twitch) {
-    const Bot = new TwitchBot(twitch)
-    Bot.on('join', channel => {
-      console.log(`Joined channel: ${channel}`)
-    })
-    Bot.on('error', err => {
-      console.log(err)
-    })
-    Bot.on('message', chatter => {
-      const [, room] = chatter.message.match(/^!room ([EW]\d+[NS]\d+)$/) || []
-      if (room) {
-        setRoom(room)
-        chatRoom = room
-        chatRoomTimeout = Date.now() + (chatTimeout * 1000)
-        Bot.say(`Switching to room ${room} on tick ${state.gameTime}`)
+    console.log('Twitch integration activating')
+    setTimeout(() => {
+      try {
+        const Bot = new TwitchBot(twitch)
+        Bot.on('connected', () => console.log('Bot connected to twitch'))
+        Bot.on('join', channel => {
+          console.log(`Joined channel: ${channel}`)
+        })
+        Bot.on('error', err => {
+          console.log('twitch-bot', err.message)
+        })
+        Bot.on('message', chatter => {
+          const [, room] = chatter.message.match(/^!(?:room|goto) ([EW]\d+[NS]\d+)$/) || []
+          if (room) {
+            setRoom(room)
+            chatRoom = room
+            chatRoomTimeout = Date.now() + (chatTimeout * 1000)
+            Bot.say(`Switching to room ${room} on tick ${state.gameTime}`)
+          }
+        })
+      } catch (e) {
+        console.log(`Twitch integration error: ${err.message}`)
       }
-    })
+    }, 100)
   }
 
   const view = mainDiv
@@ -378,15 +427,20 @@ async function run() {
     }
     for (const [id, diff] of Object.entries(objects)) {
       const cobj = cachedObjects[id] = cachedObjects[id] || {}
-      if (diff === null) {
-        delete cachedObjects[id]
-      } else {
-        cachedObjects[id] = Object.assign({}, cobj, diff)
-      }
+      // if (cobj) {
+        if (diff === null) {
+          delete cachedObjects[id]
+        } else {
+          // cachedObjects[id] = Object.assign({}, cobj, diff)
+          cachedObjects[id] = _.merge(cobj, diff)
+        }
+      // } else {
+      //   cachedObjects[id] = _.cloneDeep(diff)
+      // }
     }
     state.gameTime = gameTime || state.gameTime
     try {
-      const objects = Array.from(Object.values(cachedObjects))
+      const objects = _.cloneDeep(Array.from(Object.values(cachedObjects)))
       const ns = Object.assign({ objects }, state)
       await renderer.applyState(ns, tickSpeed / 1000)
     } catch (e) {
@@ -490,7 +544,7 @@ async function minimap() {
     k: '#640000' // keeperLair
   }
   class MiniMapRoom {
-    constructor(api, id, { colors }) {
+    constructor(api, id, { colors, rotate = 0 }) {
       this.api = api
       this.id = id
       this.colors = colors
@@ -512,6 +566,7 @@ async function minimap() {
       this.badge.anchor.y = 0.5
       this.badge.x = 25
       this.badge.y = 25
+      this.badge.rotation = -rotate || 0
       this.cont.addChild(this.badge)
     }
     getColor(identifier) {
@@ -544,17 +599,18 @@ async function minimap() {
         const size = (roomInfo.own.level * (20 / 8)) + 15
         this.badge.width = size
         this.badge.height = size
-        this.badge.alpha = roomInfo.own.level ? 0.6 : 0.5
+        this.badge.alpha = roomInfo.own.level ? 0.5 : 0.4
       }
     }
   }
+  const rotateMap = (Math.PI * 2) * 0.25
   const { rooms, users } = await getMapRooms(api)
   const mapRooms = new Map()
   const miniMap = new PIXI.Container()
   window.miniMap = miniMap
   renderer.app.stage.addChild(miniMap)
   for (const room of rooms) {
-    const r = new MiniMapRoom(api, room.id, { colors })
+    const r = new MiniMapRoom(api, room.id, { colors, rotate: rotateMap })
     r.update(room, users)
     mapRooms.set(room.id, r)
     miniMap.addChild(r.cont)
@@ -589,13 +645,18 @@ async function minimap() {
         .drawRect((x * 50), (y * 50), 50, 50)
     }
   }, 500)
+
+
   const width = 580
   const xOffset = width + 10
+
+  miniMap.rotation = rotateMap
+
   miniMap.x = -xOffset * (1 / renderer.app.stage.scale.x)
-  miniMap.width = width * (1 / renderer.app.stage.scale.x)
+  miniMap.width = width * (1 / renderer.app.stage.scale.x) * 1.8
   miniMap.scale.y = miniMap.scale.x
   // miniMap.x += 50 * 10.5 * miniMap.scale.x
-  miniMap.y += 50 * 10.5 * miniMap.scale.y
+  // miniMap.y += 50 * 10.5 * miniMap.scale.y
   renderer.app.stage.position.x = xOffset
   renderer.app.stage.mask = undefined
   // const mask = new PIXI.Graphics()
@@ -609,4 +670,20 @@ function sleep(ms) {
   return new Promise(res => setTimeout(res, ms))
 }
 
-run().catch(err => console.error(err))
+run().catch(err => {
+  console.error(err)
+  fs.appendFile('output.log', err.message + "\n", () => { })
+})
+
+
+async function warpath() {
+  return new Promise((resolve, reject) => {
+    child_process.exec('../Voight-Kampff/vk battles', (err) => {
+      if (err) return reject(err)
+      const battles = fs.readFile('battles.json', 'utf8', (err, data) => {
+        if (err) return reject(err)
+        resolve(JSON.parse(data))
+      })
+    })
+  }) 
+}

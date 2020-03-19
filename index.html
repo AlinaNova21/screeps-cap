@@ -73,7 +73,7 @@
         min-width: 1000px;
       }
       #infoDiv {
-        flex: 0 270px;
+        flex: 0 300px;
         /*
         position: fixed;
         top: 0;
@@ -89,9 +89,20 @@
       .battle > div {
         flex: 1;
       }
+      .battle .room {
+        flex: 0 0 50px;
+      }
       .battle .ticks {
         text-align: right;
         padding-right: 10px;
+      }
+      .battle .class {
+        text-align: left;
+        flex: 0 0 30px;
+      }
+      .battle .badges {
+        text-align: left;
+        flex: 0 0 48px;
       }
       .battles-enter-active, .battles-leave-active {
         transition: all 1s;
