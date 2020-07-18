@@ -19,6 +19,8 @@ const log = (...args) => {
 console.log = (...a) => log(...a)
 console.error = (...a) => log(...a)
 
+const warpathCache = new Map()
+const battles = new Map()
 let api = null
 let renderer = null
 let currentRoom = ''
@@ -28,17 +30,26 @@ let state = {
   gameTime: 0,
   pvp: {
     rooms: []
-  }
+  },
+  battles: []
 }
 let chatRoom = ''
 let chatRoomTimeout = 0
 let mapRoomsCache = null
 const ROOM_SWAP_INTERVAL = 10000
+// const SERVER='swc'
+// const STREAM_TITLE = 'Screeps Warfare Championship'
+// const SLACK_CHANNEL = '#swc'
+const SERVER='botarena'
+const STREAM_TITLE = 'BotArena'
+const SLACK_CHANNEL = '#botarena'
 const teamMap = [
-  { name: 'Rob a Lion', users: ['robalian', 'qnz', 'yoner'] },
-  { name: 'No Name Team 2', users: ['tigga', 'sergey', 'snowgoose'] },
-  { name: 'Alphabet Nerds', users: ['saruss','qzarstb', 'rayderblitz'] },
-  { name: 'The Bee Team', users: ['extreminador', 'geir', 'szpadel'] },
+  // { name: 'Dragons', users: ['tigga', 'geir'] },
+  // { name: 'Knights', users: [], default: true },
+  // { name: 'Rob a Lion', users: ['robalian', 'qnz', 'yoner'] },
+  // { name: 'No Name Team 2', users: ['tigga', 'sergey', 'snowgoose'] },
+  // { name: 'Alphabet Nerds', users: ['saruss','qzarstb', 'rayderblitz'] },
+  // { name: 'The Bee Team', users: ['extreminador', 'geir', 'szpadel'] },
 ]
 resetState()
 
@@ -46,9 +57,9 @@ Vue.component('ba-header', {
   props: ['state'],
   template: `
     <div>
-      <div style="font-size: 24pt">Screeps Warfare Championship</div>
+      <div style="font-size: 24pt">${STREAM_TITLE}</div>
       <div>https://screepspl.us/events/</div>
-      <div>http://chat.screeps.com #swc</div>
+      <div>http://chat.screeps.com ${SLACK_CHANNEL}</div>
       <div>Room: {{state.room}}</div>
       <div>Time: {{state.gameTime}}</div>
     </div>`,
@@ -126,6 +137,7 @@ Vue.component('scoreboard', {
       for (let record of data) {
         const { score, rooms, uid } = record
         const { username } = this.users[uid]
+        if (username === 'Invader') continue
         records.push({ username, rooms, score })
       }
       return records
@@ -134,8 +146,13 @@ Vue.component('scoreboard', {
       return this.records.slice(0, 15)
     },
     slicedTeams() {
+      const noTeamUsers = new Set(this.records)
       const teams = teamMap.map(t => {
         const users = t.users.map(user => this.records.find(u => u.username.match(new RegExp(user, 'i')))).filter(Boolean)
+        if (t.default) {
+          users.push(...noTeamUsers)
+        }
+        users.forEach(u => noTeamUsers.delete(u))
         const rooms = users.reduce((l, u) => l + u.rooms, 0)
         const score = users.reduce((l, u) => l + u.score, 0)
         users.sort((a, b) => b.score - a.score)
@@ -176,9 +193,8 @@ Vue.component("pvp-battles", {
     </div>`,
   computed: {
     battles() {
-      return state.pvp.rooms.map(({ _id: room, lastPvpTime, classification, warpath: { defender = '', attackers = [] } = {} }) => {
-        const ticks = Math.max(0, state.gameTime - lastPvpTime)
-        const users = Object.values(state.users)
+      console.log('battles')
+      return state.battles.map(({ room, ticks, defender, attackers, classification }) => {
         const participants = [defender, ...attackers].filter(Boolean)
         return { room, ticks, classification, participants }
       })
@@ -233,51 +249,34 @@ setTimeout(() => window.close(), 30 * 60 * 1000)
 document.addEventListener('DOMContentLoaded', () => {
   map.setZoomFactor(0.9)
 })
-const warpathCache = new Map()
 let bias = 0
 async function roomSwap() {
   // return setRoom('E7N5')
   while (true) {
     try {
-      const [{ pvp }, battles = {}] = await Promise.all([
-        api.raw.experimental.pvp(100),
-        warpath().catch(() => ({})) // Catch handles being ran in non-warpath capable setups
-      ])
+      // const [{ pvp }, battles = {}] = await Promise.all([
+        //   api.raw.experimental.pvp(90)
+        //   warpath().catch(() => ({})) // Catch handles being ran in non-warpath capable setups
+        // ])
+      const pvp = api.raw.experimental.pvp(90)
       const [shard = 'shard0'] = Object.keys(pvp)
-      let { [shard]: { rooms } } = pvp
-      const { [shard]: shardBattles = {} } = battles
-      for (const room in shardBattles) {
-        warpathCache.set(room, shardBattles[room])
-      }
-      state.pvp.rooms = rooms
-      rooms.forEach(room => {
-        room.warpath = warpathCache.get(room._id)
-        room.classification = room.warpath ? ''+room.warpath.classification : '?'
-        if (room.lastPvpTime > state.gameTime - 10) {
-          console.log(room)
-        }
-      })
-      const rank = ({ warpath: { classification = 0 } = {}, lastPvpTime }) => (classification * 1000) - (state.gameTime - lastPvpTime)
-      rooms.sort((a, b) => rank(b) - rank(a))
+      const battles = state.battles.filter(r => r.lastPvpTime > state.gameTime - 20)
       const now = Date.now()
-      const append = rooms.filter(r => r.lastPvpTime > state.gameTime - 50).map(r => `${now},${r._id},${r.lastPvpTime}\n`).join('')
-      fs.appendFile('pvp.csv', append, () => { })
-      rooms = rooms.filter(r => r.lastPvpTime > state.gameTime - 20)
       let room = ''
       if (chatRoom && chatRoomTimeout > Date.now()) {
         room = chatRoom
-      } else if (rooms.length) {
-        const { _id, lastPvpTime: time } = rooms[Math.floor(Math.random() * Math.min(bias, rooms.length))]
-        room = _id
+      } else if (battles.length) {
+        const battle = battles[Math.floor(Math.random() * Math.min(bias, battles.length))]
+        room = battle.room
         if (room === currentRoom) {
-          bias += 0.5
+          bias += 0.75
         } else {
           bias = 0
         }
       } else {
         // const { stats } = await api.raw.game.mapStats(roomList, 'owner0')
         const { rooms: rawRooms } = await getMapRooms(api)
-        rooms = rawRooms.filter(r => r.own && r.own.level && r.own.user !== '2')
+        const rooms = rawRooms.filter(r => r.own && r.own.level && r.own.user !== '2')
         room = rooms[Math.floor(Math.random() * rooms.length)].id
       }
       await setRoom(room)
@@ -324,8 +323,28 @@ async function resetState() {
   // await sleep(100)
 }
 
+function processBattles(newBattles) {
+  for (const b of newBattles) {
+    // b.lastPvpTime += 100
+    battles.set(b.room, b)
+  }
+  const remove = []
+  for (const b of battles.values()) {
+    if (b.lastPvpTime < state.gameTime - 50) {
+      remove.push(b.room)
+    }
+  }
+  remove.forEach(r => battles.delete(r))
+  battles.forEach(b => {
+    b.ticks = Math.max(0, state.gameTime - b.lastPvpTime)
+  })
+  state.battles = Array.from(battles.values())
+  const rank = ({ classification = 0, ticks }) => (classification * 1000) - ticks
+  state.battles.sort((a, b) => rank(b) - rank(a))
+}
+
 async function run() {
-  api = await ScreepsAPI.fromConfig('botarena', 'screeps-cap')
+  api = await ScreepsAPI.fromConfig(SERVER, 'screeps-cap')
   // await api.raw.register.submit(api.opts.username, api.opts.username, api.opts.username, { main: '' })
   const { twitch, chatTimeout = 60 } = api.appConfig
   if (twitch) {
@@ -394,7 +413,11 @@ async function run() {
   renderer.zoomLevel = 0.19 //view.offsetHeight / 5000
   console.log(renderer.zoomLevel, view.offsetWidth, view.clientWidth)
   await api.socket.connect()
+  api.socket.subscribe('warpath:battles')
+  api.req('GET', '/api/warpath/battles').then(data => processBattles(data))
+  api.socket.on('warpath:battles', ({ data }) => processBattles(data))
   api.socket.on('message', async ({ type, channel, id, data, data: { gameTime = 0, info, objects, users = {}, visual } = {} }) => {
+    if (type )
     if (type !== 'room') return
     if (state.reseting) return console.log('racing')
     if (id !== currentRoom) return await api.socket.unsubscribe(`room:${id}`)
@@ -408,7 +431,7 @@ async function run() {
         resetState(),
         renderer.setTerrain(currentTerrain)
       ])
-      console.log('setTerrain', currentTerrain)
+      // console.log('setTerrain', currentTerrain)
       state.reseting = true
       const [, controller] = Object.entries(objects).find(([, obj]) => obj && obj.type == 'controller') || []
       worldConfigs.gameData.player = ''
@@ -603,7 +626,7 @@ async function minimap() {
       }
     }
   }
-  const rotateMap = (Math.PI * 2) * 0.25
+  const rotateMap = 0 // (Math.PI * 2) * 0.25
   const { rooms, users } = await getMapRooms(api)
   const mapRooms = new Map()
   const miniMap = new PIXI.Container()
@@ -653,7 +676,7 @@ async function minimap() {
   miniMap.rotation = rotateMap
 
   miniMap.x = -xOffset * (1 / renderer.app.stage.scale.x)
-  miniMap.width = width * (1 / renderer.app.stage.scale.x) * 1.8
+  miniMap.width = width * (1 / renderer.app.stage.scale.x) * 0.95
   miniMap.scale.y = miniMap.scale.x
   // miniMap.x += 50 * 10.5 * miniMap.scale.x
   // miniMap.y += 50 * 10.5 * miniMap.scale.y
@@ -674,16 +697,3 @@ run().catch(err => {
   console.error(err)
   fs.appendFile('output.log', err.message + "\n", () => { })
 })
-
-
-async function warpath() {
-  return new Promise((resolve, reject) => {
-    child_process.exec('../Voight-Kampff/vk battles', (err) => {
-      if (err) return reject(err)
-      const battles = fs.readFile('battles.json', 'utf8', (err, data) => {
-        if (err) return reject(err)
-        resolve(JSON.parse(data))
-      })
-    })
-  }) 
-}
