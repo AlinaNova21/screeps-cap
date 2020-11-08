@@ -31,18 +31,30 @@ let state = {
   pvp: {
     rooms: []
   },
-  battles: []
+  battles: [],
+  stats: {
+    users: []
+  }
 }
 let chatRoom = ''
 let chatRoomTimeout = 0
 let mapRoomsCache = null
 const ROOM_SWAP_INTERVAL = 10000
+
+const SCORE_MODE = 'gpl'
+// const SCORE_MODE = 'roomLevels'
+
 // const SERVER='swc'
 // const STREAM_TITLE = 'Screeps Warfare Championship'
 // const SLACK_CHANNEL = '#swc'
-const SERVER='botarena'
-const STREAM_TITLE = 'BotArena'
-const SLACK_CHANNEL = '#botarena'
+
+const SERVER='powerarena'
+const STREAM_TITLE = 'PowerArena'
+const SLACK_CHANNEL = '#powerarena'
+
+// const SERVER='botarena'
+// const STREAM_TITLE = 'BotArena'
+// const SLACK_CHANNEL = '#botarena'
 const teamMap = [
   // { name: 'Dragons', users: ['tigga', 'geir'] },
   // { name: 'Knights', users: [], default: true },
@@ -98,14 +110,15 @@ Vue.component('scoreboard', {
         </template>
       </table>
       <div v-if="records.length > 15">Only top 15 players listed</div>
-      <div>Note: Score does not check for active spawns</div>
+      <div v-if="scoreMode === 'roomLevels'">Note: Score does not check for active spawns</div>
     </div>
     `,
   data() {
     return {
       updateInterval: null,
       rooms: [],
-      users: {}
+      users: {},
+      scoreMode: SCORE_MODE
     }
   },
   mounted() {
@@ -118,27 +131,41 @@ Vue.component('scoreboard', {
   computed: {
     records() {
       const records = []
-      const uids = {}
-      for (const { own } of this.rooms) {
-        if (!own || !own.level) continue
-        if (uids[own.user]) {
-          uids[own.user].rooms++
-          uids[own.user].score += own.level
-        } else {
-          uids[own.user] = {
-            uid: own.user,
-            rooms: 1,
-            score: own.level
+      if (this.scoreMode === 'roomLevels') {
+        const uids = {}
+        for (const { own } of this.rooms) {
+          if (!own || !own.level) continue
+          if (!uids[own.user]) {
+            uids[own.user] = {
+              uid: own.user,
+              rooms: 1,
+              score: 0
+            }
           }
+          uids[own.user].rooms++
+          uids[own.user].roomLevels += own.level
+          uids[own.user].score += own.level
+        }
+        const data = Object.keys(uids).map(k => uids[k])
+        data.sort((a, b) => b.score - a.score)
+        for (let record of data) {
+          const { score, rooms, uid } = record
+          const { username } = this.users[uid]
+          if (username === 'Invader') continue
+          records.push({ username, rooms, score })
         }
       }
-      const data = Object.keys(uids).map(k => uids[k])
-      data.sort((a, b) => b.score - a.score)
-      for (let record of data) {
-        const { score, rooms, uid } = record
-        const { username } = this.users[uid]
-        if (username === 'Invader') continue
-        records.push({ username, rooms, score })
+      if (this.scoreMode === 'gpl') {
+        const { users = [] } = state.stats
+        users.sort((a, b) => b.power - a.power)
+        for (const user of users) {
+          // if (!user.power) continue
+          records.push({
+            score: user.powerLevel,
+            rooms: this.rooms.filter(r => r.own && r.own.level && r.own.user === user.id).length,
+            username: user.username
+          })
+        }
       }
       return records
     },
@@ -323,6 +350,11 @@ async function resetState() {
   // await sleep(100)
 }
 
+function processStats(stats) {
+  console.log(stats)
+  state.stats = stats
+}
+
 function processBattles(newBattles) {
   for (const b of newBattles) {
     // b.lastPvpTime += 100
@@ -414,8 +446,11 @@ async function run() {
   console.log(renderer.zoomLevel, view.offsetWidth, view.clientWidth)
   await api.socket.connect()
   api.socket.subscribe('warpath:battles')
+  api.socket.subscribe('stats:full')
   api.req('GET', '/api/warpath/battles').then(data => processBattles(data))
+  api.req('GET', '/stats').then(data => processStats(data))
   api.socket.on('warpath:battles', ({ data }) => processBattles(data))
+  api.socket.on('stats:full', ({ data }) => processStats(data))
   api.socket.on('message', async ({ type, channel, id, data, data: { gameTime = 0, info, objects, users = {}, visual } = {} }) => {
     if (type )
     if (type !== 'room') return
@@ -616,7 +651,7 @@ async function minimap() {
     update(roomInfo, users) {
       this.badge.visible = !!roomInfo.own
       if (roomInfo.own) {
-        const user = users[roomInfo.own.user]
+        const user = users[roomInfo.own.user] || state.users[roomInfo.own.user] || state.stats.users.find(u => u.id === roomInfo.own.users)
         const badgeURL = `${this.api.opts.url}api/user/badge-svg?username=${user.username}`
         this.badge.texture = PIXI.Texture.from(badgeURL)
         const size = (roomInfo.own.level * (20 / 8)) + 15
@@ -678,8 +713,8 @@ async function minimap() {
   miniMap.x = -xOffset * (1 / renderer.app.stage.scale.x)
   miniMap.width = width * (1 / renderer.app.stage.scale.x) * 0.95
   miniMap.scale.y = miniMap.scale.x
-  // miniMap.x += 50 * 10.5 * miniMap.scale.x
-  // miniMap.y += 50 * 10.5 * miniMap.scale.y
+  miniMap.x += 50 * 10.5 * miniMap.scale.x
+  miniMap.y += 50 * 10.5 * miniMap.scale.y
   renderer.app.stage.position.x = xOffset
   renderer.app.stage.mask = undefined
   // const mask = new PIXI.Graphics()
