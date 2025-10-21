@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "main": "main.js",
   "license": "MIT",
+  "type": "module",
   "scripts": {
     "_postinstall": "cp -f lib/* node_modules/electron/dist/",
     "start": "electron . --ignore-gpu-blacklist | tee output.log",
