@@ -454,7 +454,7 @@ const app2 = new Vue({
 // Restart occasionally, sometimes the cycle breaks, this helps auto-recover
 setTimeout(() => window.close(), 30 * 60 * 1000)
 document.addEventListener('DOMContentLoaded', () => {
-  map.setZoomFactor(0.9)
+  map?.setZoomFactor(0.9)
 })
 let bias = 0
 async function roomSwap() {
