@@ -20,7 +20,11 @@ function createWindow () {
     x:0, y:0,
     fullscreen: true,
     width, height, 
-    frame: DEV 
+    frame: DEV,
+    webPreferences: {
+      contextIsolation: false,
+      nodeIntegration: true,
+    }
   })
   mainWindow.loadFile('index.html')
   if(DEV) {

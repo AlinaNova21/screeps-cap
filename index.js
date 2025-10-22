@@ -1,6 +1,4 @@
-const path = require('path')
 const _ = require('lodash')
-const child_process = require('child_process')
 const seedrandom = require('seedrandom')
 const randomColor = require('randomcolor')
 const fs = require('fs')
@@ -9,15 +7,23 @@ const { ScreepsAPI } = require('screeps-api')
 const { GameRenderer } = require('@screeps/renderer')
 const worldConfigs = require('./assets/worldConfigs')
 const { resourceMap, rescaleResources } = require('./assets/resourceMap')
-const argv = require('electron').remote.process.argv
 
-const origConsoleLog = console.log
-const log = (...args) => {
-  fs.appendFile('output.log', args.join(' ') + "\n", () => {})
-  origConsoleLog.apply(console, args)
+const realConsole = {
+  "debug": console.debug,
+  "info": console.info,
+  "log": console.log,
+  "warn": console.warn,
+  "error": console.error,
 }
-console.log = (...a) => log(...a)
-console.error = (...a) => log(...a)
+
+const log = (lvl, ...args) => {
+  fs.appendFile('output.log', `[${lvl}]:` + args.join(' ') + "\n", () => {})
+  
+  realConsole[lvl].apply(console, args)
+}
+for (const key in realConsole) {
+  console[key] = (...a) => log(key, ...a);
+}
 
 const warpathCache = new Map()
 const battles = new Map()
@@ -48,7 +54,7 @@ const SCORE_MODE = 'gpl'
 // const STREAM_TITLE = 'Screeps Warfare Championship'
 // const SLACK_CHANNEL = '#swc'
 
-const SERVER='powerarena'
+const SERVER='mmo'
 const STREAM_TITLE = 'PowerArena'
 const SLACK_CHANNEL = '#powerarena'
 
