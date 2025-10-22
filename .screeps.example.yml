@@ -9,3 +9,29 @@ servers:
     port: 443
     username: ChangeMe
     password: ChangeMe
+screeps-cap:
+  server: mmo
+  shard: shard2
+  scoreMode: gpl # gpl | roomLevels
+  streamTitle: Screeps MMO shard2
+  twitch:
+    username: TwitchUser
+    oauth: TwitchOAuth
+    channels: []
+    port: 443
+    silence: false
+    chatTimeout: 60
+  # teams:
+  #   - name: Dragons
+  #     users: [tigga, geir]
+  #   - name: Knights
+  #     default: true # users without a team will end up here
+  #     users:
+  #   - name: 'Rob a Lion'
+  #     users: ['robalian', 'qnz', 'yoner']
+  #   - name: 'No Name Team 2'
+  #     users: ['tigga', 'sergey', 'snowgoose']
+  #   - name: 'Alphabet Nerds'
+  #     users: ['saruss','qzarstb', 'rayderblitz']
+  #   - name: 'The Bee Team'
+  #     users: ['extreminador', 'geir', 'szpadel']

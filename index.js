@@ -5,6 +5,7 @@ const fs = require('fs')
 const TwitchBot = require('twitch-bot')
 const { ScreepsAPI } = require('screeps-api')
 const { GameRenderer } = require('@screeps/renderer')
+const YAML = require("yaml")
 // const worldConfigs = require('./assets/worldConfigs')
 // const { resourceMap, rescaleResources } = require('./assets/resourceMap')
 
@@ -217,43 +218,33 @@ let state = {
     users: []
   }
 }
+
 let chatRoom = ''
 let chatRoomTimeout = 0
 let mapRoomsCache = null
 const ROOM_SWAP_INTERVAL = 10000
 
-const SCORE_MODE = 'gpl'
-// const SCORE_MODE = 'roomLevels'
+const CONFIG = YAML.parse(fs.readFileSync(".screeps.yml", { encoding: 'utf-8' }))['screeps-cap']
 
-// const SERVER='swc'
-// const STREAM_TITLE = 'Screeps Warfare Championship'
-// const SLACK_CHANNEL = '#swc'
+CONFIG.scoreMode ??= 'gpl'
 
-const SERVER = 'mmo'
-const SHARD = "shard2"
-const STREAM_TITLE = 'PowerArena'
-const SLACK_CHANNEL = '#powerarena'
+CONFIG.server ??= 'mmo'
+CONFIG.shard ??= ""
+CONFIG.streamTitle ??= 'PowerArena'
+CONFIG.slackChannel ??= '#powerarena'
 
-// const SERVER='botarena'
-// const STREAM_TITLE = 'BotArena'
-// const SLACK_CHANNEL = '#botarena'
-const teamMap = [
-  // { name: 'Dragons', users: ['tigga', 'geir'] },
-  // { name: 'Knights', users: [], default: true },
-  // { name: 'Rob a Lion', users: ['robalian', 'qnz', 'yoner'] },
-  // { name: 'No Name Team 2', users: ['tigga', 'sergey', 'snowgoose'] },
-  // { name: 'Alphabet Nerds', users: ['saruss','qzarstb', 'rayderblitz'] },
-  // { name: 'The Bee Team', users: ['extreminador', 'geir', 'szpadel'] },
-]
+CONFIG.teams ??= []
+CONFIG.teams.forEach(t => t.users ??= [])
+
 resetState()
 
 Vue.component('ba-header', {
   props: ['state'],
   template: `
     <div>
-      <div style="font-size: 24pt">${STREAM_TITLE}</div>
+      <div style="font-size: 24pt">${CONFIG.streamTitle}</div>
       <div>https://screepspl.us/events/</div>
-      <div>http://chat.screeps.com ${SLACK_CHANNEL}</div>
+      <div>http://chat.screeps.com ${CONFIG.slackChannel}</div>
       <div>Room: {{state.room}}</div>
       <div>Time: {{state.gameTime}}</div>
     </div>`,
@@ -300,7 +291,7 @@ Vue.component('scoreboard', {
       updateInterval: null,
       rooms: [],
       users: {},
-      scoreMode: SCORE_MODE
+      scoreMode: CONFIG.scoreMode
     }
   },
   mounted() {
@@ -356,7 +347,7 @@ Vue.component('scoreboard', {
     },
     slicedTeams() {
       const noTeamUsers = new Set(this.records)
-      const teams = teamMap.map(t => {
+      const teams = CONFIG.teams.map(t => {
         const users = t.users.map(user => this.records.find(u => u.username.match(new RegExp(user, 'i')))).filter(Boolean)
         if (t.default) {
           users.push(...noTeamUsers)
@@ -377,7 +368,7 @@ Vue.component('scoreboard', {
     },
     async update() {
       while (!api) await sleep(1000)
-      const { rooms, users } = await getMapRooms(api, SHARD)
+      const { rooms, users } = await getMapRooms(api, CONFIG.shard)
       // const { stats, users } = await api.raw.game.mapStats(roomList, 'owner0')
       // this.stats = stats
       this.rooms = rooms
@@ -468,7 +459,7 @@ async function roomSwap() {
         //   warpath().catch(() => ({})) // Catch handles being ran in non-warpath capable setups
         // ])
       const pvp = api.raw.experimental.pvp(90)
-      const [shard = SHARD] = Object.keys(pvp)
+      const [shard = CONFIG.shard] = Object.keys(pvp)
       const battles = state.battles.filter(r => r.lastPvpTime > state.gameTime - 20)
       const now = Date.now()
       let room = ''
@@ -484,7 +475,7 @@ async function roomSwap() {
         }
       } else {
         // const { stats } = await api.raw.game.mapStats(roomList, 'owner0')
-        const { rooms: rawRooms } = await getMapRooms(api, SHARD)
+        const { rooms: rawRooms } = await getMapRooms(api, CONFIG.shard)
         const rooms = rawRooms.filter(r => r.own && r.own.level && r.own.user !== '2')
         room = rooms[Math.floor(Math.random() * rooms.length)].id
       }
@@ -558,11 +549,13 @@ function processBattles(newBattles) {
 }
 
 async function run() {
-  api = await ScreepsAPI.fromConfig(SERVER, 'screeps-cap')
+  api = await ScreepsAPI.fromConfig(CONFIG.server, 'screeps-cap')
   // await api.raw.register.submit(api.opts.username, api.opts.username, api.opts.username, { main: '' })
-  const { twitch, chatTimeout = 60 } = api.appConfig
+  console.log("appConfig", api.appConfig)
+  const { twitch } = api.appConfig
   if (twitch) {
     console.log('Twitch integration activating')
+    const chatTimeout = twitch.chatTimeout ?? 60;
     setTimeout(() => {
       try {
         const Bot = new TwitchBot(twitch)
@@ -852,13 +845,13 @@ async function minimap() {
     }
   }
   const rotateMap = 0 // (Math.PI * 2) * 0.25
-  const { rooms, users } = await getMapRooms(api, SHARD)
+  const { rooms, users } = await getMapRooms(api, CONFIG.shard)
   const mapRooms = new Map()
   const miniMap = new PIXI.Container()
   window.miniMap = miniMap
   renderer.app.stage.addChild(miniMap)
   for (const room of rooms) {
-    const r = new MiniMapRoom(api, room.id, SHARD, { colors, rotate: rotateMap })
+    const r = new MiniMapRoom(api, room.id, CONFIG.shard, { colors, rotate: rotateMap })
     r.update(room, users)
     mapRooms.set(room.id, r)
     miniMap.addChild(r.cont)
@@ -868,7 +861,7 @@ async function minimap() {
     if (currentRoom === lastRoom) return
     if (!currentRoom) return
     lastRoom = currentRoom
-    const { rooms, users } = await getMapRooms(api, SHARD)
+    const { rooms, users } = await getMapRooms(api, CONFIG.shard)
     for (const room of rooms) {
       const r = mapRooms.get(room.id)
       r.update(room, users)
