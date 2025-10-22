@@ -1,4 +1,8 @@
 servers:
+  mmo:
+    host: screeps.com
+    secure: true
+    token: <your-token>
   botarena:
     host: botarena.screepspl.us
     secure: true
