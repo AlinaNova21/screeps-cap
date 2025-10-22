@@ -8,22 +8,30 @@ const { GameRenderer } = require('@screeps/renderer')
 const worldConfigs = require('./assets/worldConfigs')
 const { resourceMap, rescaleResources } = require('./assets/resourceMap')
 
-const realConsole = {
-  "debug": console.debug,
-  "info": console.info,
-  "log": console.log,
-  "warn": console.warn,
-  "error": console.error,
+function hookConsole() {
+  const realConsole = {
+    "debug": console.debug,
+    "info": console.info,
+    "log": console.log,
+    "warn": console.warn,
+    "error": console.error,
+  }
+  const formatArg = (arg) => {
+    if (arg instanceof Error) {
+      return `${arg}\n${arg.stack}`
+    }
+    return `${arg}`
+  }
+  const log = (lvl, ...args) => {
+    fs.appendFile('output.log', `[${lvl}]:` + args.map(formatArg).join(' ') + "\n", () => {})
+    
+    realConsole[lvl].apply(console, args)
+  }
+  for (const key in realConsole) {
+    console[key] = (...a) => log(key, ...a);
+  }
 }
-
-const log = (lvl, ...args) => {
-  fs.appendFile('output.log', `[${lvl}]:` + args.join(' ') + "\n", () => {})
-  
-  realConsole[lvl].apply(console, args)
-}
-for (const key in realConsole) {
-  console[key] = (...a) => log(key, ...a);
-}
+hookConsole();
 
 const warpathCache = new Map()
 const battles = new Map()
