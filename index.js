@@ -201,6 +201,7 @@ const rescaleResources = [
 
 const warpathCache = new Map()
 const battles = new Map()
+/** @type {ScreepsAPI} */
 let api = null
 let renderer = null
 let currentRoom = ''
@@ -228,7 +229,8 @@ const SCORE_MODE = 'gpl'
 // const STREAM_TITLE = 'Screeps Warfare Championship'
 // const SLACK_CHANNEL = '#swc'
 
-const SERVER='mmo'
+const SERVER = 'mmo'
+const SHARD = "shard2"
 const STREAM_TITLE = 'PowerArena'
 const SLACK_CHANNEL = '#powerarena'
 
@@ -375,7 +377,7 @@ Vue.component('scoreboard', {
     },
     async update() {
       while (!api) await sleep(1000)
-      const { rooms, users } = await getMapRooms(api)
+      const { rooms, users } = await getMapRooms(api, SHARD)
       // const { stats, users } = await api.raw.game.mapStats(roomList, 'owner0')
       // this.stats = stats
       this.rooms = rooms
@@ -466,7 +468,7 @@ async function roomSwap() {
         //   warpath().catch(() => ({})) // Catch handles being ran in non-warpath capable setups
         // ])
       const pvp = api.raw.experimental.pvp(90)
-      const [shard = 'shard0'] = Object.keys(pvp)
+      const [shard = SHARD] = Object.keys(pvp)
       const battles = state.battles.filter(r => r.lastPvpTime > state.gameTime - 20)
       const now = Date.now()
       let room = ''
@@ -482,7 +484,7 @@ async function roomSwap() {
         }
       } else {
         // const { stats } = await api.raw.game.mapStats(roomList, 'owner0')
-        const { rooms: rawRooms } = await getMapRooms(api)
+        const { rooms: rawRooms } = await getMapRooms(api, SHARD)
         const rooms = rawRooms.filter(r => r.own && r.own.level && r.own.user !== '2')
         room = rooms[Math.floor(Math.random() * rooms.length)].id
       }
@@ -720,7 +722,13 @@ function XYFromRoom(room) {
   return { x, y }
 }
 
-async function getMapRooms(api, shard = 'shard0') {
+/**
+ * 
+ * @param {ScreepsAPI} api 
+ * @param {string | undefined} shard 
+ * @returns 
+ */
+async function getMapRooms(api, shard = undefined) {
   if (!mapRoomsCache) {
     console.log('Scanning sectors')
     const sectors = await scanSectors()
@@ -842,13 +850,13 @@ async function minimap() {
     }
   }
   const rotateMap = 0 // (Math.PI * 2) * 0.25
-  const { rooms, users } = await getMapRooms(api)
+  const { rooms, users } = await getMapRooms(api, SHARD)
   const mapRooms = new Map()
   const miniMap = new PIXI.Container()
   window.miniMap = miniMap
   renderer.app.stage.addChild(miniMap)
   for (const room of rooms) {
-    const r = new MiniMapRoom(api, room.id, { colors, rotate: rotateMap })
+    const r = new MiniMapRoom(api, room.id, SHARD, { colors, rotate: rotateMap })
     r.update(room, users)
     mapRooms.set(room.id, r)
     miniMap.addChild(r.cont)
@@ -858,7 +866,7 @@ async function minimap() {
     if (currentRoom === lastRoom) return
     if (!currentRoom) return
     lastRoom = currentRoom
-    const { rooms, users } = await getMapRooms(api)
+    const { rooms, users } = await getMapRooms(api, SHARD)
     for (const room of rooms) {
       const r = mapRooms.get(room.id)
       r.update(room, users)
