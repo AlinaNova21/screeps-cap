@@ -460,6 +460,7 @@ async function roomSwap() {
         //   warpath().catch(() => ({})) // Catch handles being ran in non-warpath capable setups
         // ])
       const pvp = api.raw.experimental.pvp(90)
+      // console.log("pvp:", pvp)
       const [shard = CONFIG.shard] = Object.keys(pvp)
       const battles = state.battles.filter(r => r.lastPvpTime > state.gameTime - 20)
       const now = Date.now()
@@ -525,7 +526,7 @@ async function resetState() {
 }
 
 function processStats(stats) {
-  console.log(stats)
+  console.log("stats:", stats)
   state.stats = stats
 }
 
@@ -619,7 +620,7 @@ async function run() {
   }
   renderer.resize()
   renderer.zoomLevel = 0.19 //view.offsetHeight / 5000
-  console.log(renderer.zoomLevel, view.offsetWidth, view.clientWidth)
+  console.log("run:", renderer.zoomLevel, view.offsetWidth, view.clientWidth)
   await api.socket.connect()
   api.socket.subscribe('warpath:battles')
   api.socket.subscribe('stats:full')
@@ -920,5 +921,4 @@ function sleep(ms) {
 
 run().catch(err => {
   console.error(err)
-  fs.appendFile('output.log', err.message + "\n", () => { })
 })
