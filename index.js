@@ -790,7 +790,7 @@ async function minimap() {
     k: '#640000' // keeperLair
   }
   class MiniMapRoom {
-    constructor(api, id, { colors, rotate = 0 }) {
+    constructor(api, id, shard = "", { colors, rotate = 0 }) {
       this.api = api
       this.id = id
       this.colors = colors
@@ -801,7 +801,9 @@ async function minimap() {
       this.cont.y = y * 50
       this.cont.width = 50
       this.cont.height = 50
-      this.img = PIXI.Sprite.from(`${api.opts.url}assets/map/${id}.png`)
+      const baseUrl = api.opts.url === "https://screeps.com/" ? "https://d3os7yery2usni.cloudfront.net" : `${api.opts.url}assets`;
+      const shardSlug = shard !== "" ? `${shard}/` : "";
+      this.img = PIXI.Sprite.from(`${baseUrl}/map/${shardSlug}${id}.png`)
       this.img.width = 50
       this.img.height = 50
       this.cont.addChild(this.img)
