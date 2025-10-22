@@ -755,7 +755,7 @@ async function getMapRooms(api, shard = 'shard0') {
 
   async function scan(rooms = []) {
     if (!rooms.length) return { rooms: [], users: {} }
-    const result = await api.raw.game.mapStats(rooms, shard, 'owner0')
+    const result = await api.raw.game.mapStats(rooms, 'owner0', shard)
     const ret = []
     for (const k in result.stats) {
       const { status, own } = result.stats[k]
