@@ -1,6 +1,7 @@
 // Modules to control application life and create native browser window
-const electron = require('electron')
-const {app, BrowserWindow} = electron
+import * as electron from 'electron'
+import { app, BrowserWindow } from 'electron'
+import { VUEJS_DEVTOOLS, installExtension } from "electron-devtools-installer"
 
 let mainWindow
 
@@ -19,11 +20,14 @@ function createWindow () {
     x:0, y:0,
     fullscreen: true,
     width, height, 
-    frame: DEV 
+    frame: DEV,
+    webPreferences: {
+      contextIsolation: false,
+      nodeIntegration: true,
+    }
   })
   mainWindow.loadFile('index.html')
   if(DEV) {
-    const { default: installExtension, VUEJS_DEVTOOLS } = require('electron-devtools-installer');
     installExtension(VUEJS_DEVTOOLS)
         .then((name) => console.log(`Added Extension:  ${name}`))
         .catch((err) => console.log('An error occurred: ', err));

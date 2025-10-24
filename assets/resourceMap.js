@@ -88,6 +88,7 @@ const resourceMap = {
     reinforce: 'reinforce.svg',
     'remote-transfer': 'remote-transfer.svg',
     renew: 'renew.svg',
+    ruin: 'ruin.svg',
     shield: 'shield.svg',
     sight: 'sight.svg',
     snipe: 'snipe.svg',

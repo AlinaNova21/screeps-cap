@@ -1,26 +1,209 @@
-const path = require('path')
 const _ = require('lodash')
-const child_process = require('child_process')
 const seedrandom = require('seedrandom')
 const randomColor = require('randomcolor')
 const fs = require('fs')
 const TwitchBot = require('twitch-bot')
 const { ScreepsAPI } = require('screeps-api')
 const { GameRenderer } = require('@screeps/renderer')
-const worldConfigs = require('./assets/worldConfigs')
-const { resourceMap, rescaleResources } = require('./assets/resourceMap')
-const argv = require('electron').remote.process.argv
+const YAML = require("yaml")
+// const worldConfigs = require('./assets/worldConfigs')
+// const { resourceMap, rescaleResources } = require('./assets/resourceMap')
 
-const origConsoleLog = console.log
-const log = (...args) => {
-  fs.appendFile('output.log', args.join(' ') + "\n", () => {})
-  origConsoleLog.apply(console, args)
+function hookConsole() {
+  const realConsole = {
+    "debug": console.debug,
+    "info": console.info,
+    "log": console.log,
+    "warn": console.warn,
+    "error": console.error,
+  }
+  const formatArg = (arg) => {
+    if (arg instanceof Error) {
+      return `${arg}\n${arg.stack}`
+    }
+    return `${arg}`
+  }
+  const log = (lvl, ...args) => {
+    fs.appendFile('output.log', `[${lvl}]:` + args.map(formatArg).join(' ') + "\n", () => {})
+    
+    realConsole[lvl].apply(console, args)
+  }
+  for (const key in realConsole) {
+    console[key] = (...a) => log(key, ...a);
+  }
 }
-console.log = (...a) => log(...a)
-console.error = (...a) => log(...a)
+hookConsole();
+
+require('@screeps/renderer-metadata');
+
+const worldConfigs = {
+    ATTACK_PENETRATION: 10,
+    CELL_SIZE: 100,
+    RENDER_SIZE: {
+        width: 2048,
+        height: 2048,
+    },
+    VIEW_BOX: 5000,
+    BADGE_URL: '/api/user/badge-svg?username=%1',
+    metadata: RENDERER_METADATA,
+    gameData: {
+        player: '', //561e4d4645f3f7244a7622e8',
+        showMyNames: {
+            spawns: false,
+            creeps: false,
+        },
+        showEnemyNames: {
+            spawns: false,
+            creeps: false,
+        },
+        showFlagsNames: true,
+        showCreepSpeech: true,
+        swampTexture: 'animated',
+        // swampTexture: 'disabled',
+    },
+    // lighting: 'disabled',
+    lighting: 'normal',
+    forceCanvas: false,
+};
+
+const resourceMap = {
+    berserk: 'berserk.svg',
+    bodyPartBar: 'bodyPartBar.svg',
+    // circle: 'circle.svg',
+    'commander-lvl0': 'commander-lvl0.svg',
+    'commander-lvl1': 'commander-lvl1.svg',
+    'commander-lvl2': 'commander-lvl2.svg',
+    'commander-lvl3': 'commander-lvl3.svg',
+    'commander-lvl4': 'commander-lvl4.svg',
+    constructedWall: 'constructedWall.svg',
+    controller: 'controller.svg',
+    'controller-level': 'controller-level.svg',
+    'disrupt-source': 'disrupt-source.svg',
+    cover: 'cover.svg',
+    'creep-npc': 'creep-npc.svg',
+    'creep-mask': 'creep-mask.png',
+    defend: 'defend.svg',
+    demolish: 'demolish.svg',
+    disable: 'disable.svg',
+    'disrupt-spawn': 'disrupt-spawn.svg',
+    'disrupt-tower': 'disrupt-tower.svg',
+    'disrupt-terminal': 'disrupt-terminal.svg',
+    'drain-extension': 'drain-extension.svg',
+    encourage: 'encourage.svg',
+    exhaust: 'exhaust.svg',
+    //'regenerate-mineral': 'regenerate-mineral.svg',
+    //'regenerate-source': 'regenerate-source.svg',
+    flag: 'flag.svg',
+    'flag-secondary': 'flag-secondary.svg',
+    'executor-lvl0': 'executor-lvl0.svg',
+    'executor-lvl1': 'executor-lvl1.svg',
+    'executor-lvl2': 'executor-lvl2.svg',
+    'executor-lvl3': 'executor-lvl3.svg',
+    'executor-lvl4': 'executor-lvl4.svg',
+    extension: 'extension.svg',
+    'extension-border50': 'extension-border50.svg',
+    'extension-border100': 'extension-border100.svg',
+    'extension-border200': 'extension-border200.svg',
+    extractor: 'extractor.svg',
+    'exit-left': 'exit-left.svg',
+    'exit-top': 'exit-top.svg',
+    'exit-bottom': 'exit-bottom.svg',
+    'exit-right': 'exit-right.svg',
+    flare1: 'flare1.png',
+    flare2: 'flare2.png',
+    flare3: 'flare3.png',
+    'harvest-energy': 'harvest-energy.svg',
+    'harvest-mineral': 'harvest-mineral.svg',
+    'generate-ops': 'generate-ops.svg',
+    glow: 'glow.png',
+    ground: 'ground.png',
+    'ground-mask': 'ground-mask.png',
+    //'ground-mask2': 'ground-mask2.png',
+    kill: 'kill.svg',
+    lab: 'lab.svg',
+    'lab-highlight': 'lab-highlight.svg',
+    'lab-mineral': 'lab-mineral.svg',
+    link: 'link.svg',
+    'link-energy': 'link-energy.svg',
+    'link-border': 'link-border.svg',
+    'mass-repair': 'mass-repair.svg',
+    noise1: 'noise1.png',
+    noise2: 'noise2.png',
+    nuke: 'nuke.svg',
+    nuker: 'nuker.svg',
+    'nuker-border': 'nuker-border.svg',
+    'operate-extension': 'operate-extension.svg',
+    'operate-lab': 'operate-lab.svg',
+    'operate-observer': 'operate-observer.svg',
+    'operate-spawn': 'operate-spawn.svg',
+    'operate-storage': 'operate-storage.svg',
+    'operate-terminal': 'operate-terminal.svg',
+    'operate-tower': 'operate-tower.svg',
+    'operator-lvl0': 'operator-lvl0.svg',
+    'operator-lvl1': 'operator-lvl1.svg',
+    'operator-lvl2': 'operator-lvl2.svg',
+    'operator-lvl3': 'operator-lvl3.svg',
+    'operator-lvl4': 'operator-lvl4.svg',
+    powerBank: 'powerBank.svg',
+    punch: 'punch.svg',
+    rampart: 'rampart.svg',
+    rectangle: 'rectangle.svg',
+    reflect: 'reflect.svg',
+    reinforce: 'reinforce.svg',
+    'remote-transfer': 'remote-transfer.svg',
+    renew: 'renew.svg',
+    ruin: 'ruin.svg',
+    shield: 'shield.svg',
+    sight: 'sight.svg',
+    snipe: 'snipe.svg',
+    storage: 'storage.svg',
+    'storage-border': 'storage-border.svg',
+    summon: 'summon.svg',
+    tbd: 'tbd.svg',
+    terminal: 'terminal.svg',
+    'terminal-border': 'terminal-border.svg',
+    'terminal-highlight': 'terminal-highlight.svg',
+    'terminal-arrows': 'terminal-arrows.svg',
+    'tombstone-border': 'tombstone-border.svg',
+    'tombstone-resource': 'tombstone-resource.svg',
+    tough: 'tough.svg',
+    'tower-base': 'tower-base.svg',
+    'tower-rotatable': 'tower-rotatable.svg',
+}
+
+for(const k in resourceMap) {
+ resourceMap[k] = `node_modules/@screeps/renderer-metadata/images/${resourceMap[k]}`
+}  
+const rescaleResources = [
+    'bodyPartBar',
+    'controller',
+    'controller-level',
+    'constructedWall',
+    'creep-npc',
+    'extension-border50',
+    'extension-border100',
+    'extension-border200',
+    'extractor',
+    'flag',
+    'flag-secondary',
+    'lab',
+    'link',
+    'link-border',
+    'nuker',
+    'nuker-border',
+    'powerBank',
+    'storage',
+    'storage-border',
+    'terminal-border',
+    'terminal-arrows',
+    'tombstone-border',
+    'tombstone-resource',
+    'tower-base',
+]
 
 const warpathCache = new Map()
 const battles = new Map()
+/** @type {ScreepsAPI} */
 let api = null
 let renderer = null
 let currentRoom = ''
@@ -36,42 +219,33 @@ let state = {
     users: []
   }
 }
+
 let chatRoom = ''
 let chatRoomTimeout = 0
 let mapRoomsCache = null
 const ROOM_SWAP_INTERVAL = 10000
 
-const SCORE_MODE = 'gpl'
-// const SCORE_MODE = 'roomLevels'
+const CONFIG = YAML.parse(fs.readFileSync(".screeps.yml", { encoding: 'utf-8' }))['screeps-cap']
 
-// const SERVER='swc'
-// const STREAM_TITLE = 'Screeps Warfare Championship'
-// const SLACK_CHANNEL = '#swc'
+CONFIG.scoreMode ??= 'gpl'
 
-const SERVER='powerarena'
-const STREAM_TITLE = 'PowerArena'
-const SLACK_CHANNEL = '#powerarena'
+CONFIG.server ??= 'mmo'
+CONFIG.shard ??= ""
+CONFIG.streamTitle ??= 'PowerArena'
+CONFIG.slackChannel ??= '#powerarena'
 
-// const SERVER='botarena'
-// const STREAM_TITLE = 'BotArena'
-// const SLACK_CHANNEL = '#botarena'
-const teamMap = [
-  // { name: 'Dragons', users: ['tigga', 'geir'] },
-  // { name: 'Knights', users: [], default: true },
-  // { name: 'Rob a Lion', users: ['robalian', 'qnz', 'yoner'] },
-  // { name: 'No Name Team 2', users: ['tigga', 'sergey', 'snowgoose'] },
-  // { name: 'Alphabet Nerds', users: ['saruss','qzarstb', 'rayderblitz'] },
-  // { name: 'The Bee Team', users: ['extreminador', 'geir', 'szpadel'] },
-]
+CONFIG.teams ??= []
+CONFIG.teams.forEach(t => t.users ??= [])
+
 resetState()
 
 Vue.component('ba-header', {
   props: ['state'],
   template: `
     <div>
-      <div style="font-size: 24pt">${STREAM_TITLE}</div>
+      <div style="font-size: 24pt">${CONFIG.streamTitle}</div>
       <div>https://screepspl.us/events/</div>
-      <div>http://chat.screeps.com ${SLACK_CHANNEL}</div>
+      <div>http://chat.screeps.com ${CONFIG.slackChannel}</div>
       <div>Room: {{state.room}}</div>
       <div>Time: {{state.gameTime}}</div>
     </div>`,
@@ -118,7 +292,7 @@ Vue.component('scoreboard', {
       updateInterval: null,
       rooms: [],
       users: {},
-      scoreMode: SCORE_MODE
+      scoreMode: CONFIG.scoreMode
     }
   },
   mounted() {
@@ -174,7 +348,7 @@ Vue.component('scoreboard', {
     },
     slicedTeams() {
       const noTeamUsers = new Set(this.records)
-      const teams = teamMap.map(t => {
+      const teams = CONFIG.teams.map(t => {
         const users = t.users.map(user => this.records.find(u => u.username.match(new RegExp(user, 'i')))).filter(Boolean)
         if (t.default) {
           users.push(...noTeamUsers)
@@ -195,7 +369,7 @@ Vue.component('scoreboard', {
     },
     async update() {
       while (!api) await sleep(1000)
-      const { rooms, users } = await getMapRooms(api)
+      const { rooms, users } = await getMapRooms(api, CONFIG.shard)
       // const { stats, users } = await api.raw.game.mapStats(roomList, 'owner0')
       // this.stats = stats
       this.rooms = rooms
@@ -274,7 +448,7 @@ const app2 = new Vue({
 // Restart occasionally, sometimes the cycle breaks, this helps auto-recover
 setTimeout(() => window.close(), 30 * 60 * 1000)
 document.addEventListener('DOMContentLoaded', () => {
-  map.setZoomFactor(0.9)
+  // map?.setZoomFactor(0.9)
 })
 let bias = 0
 async function roomSwap() {
@@ -286,7 +460,8 @@ async function roomSwap() {
         //   warpath().catch(() => ({})) // Catch handles being ran in non-warpath capable setups
         // ])
       const pvp = api.raw.experimental.pvp(90)
-      const [shard = 'shard0'] = Object.keys(pvp)
+      // console.log("pvp:", pvp)
+      const [shard = CONFIG.shard] = Object.keys(pvp)
       const battles = state.battles.filter(r => r.lastPvpTime > state.gameTime - 20)
       const now = Date.now()
       let room = ''
@@ -302,7 +477,7 @@ async function roomSwap() {
         }
       } else {
         // const { stats } = await api.raw.game.mapStats(roomList, 'owner0')
-        const { rooms: rawRooms } = await getMapRooms(api)
+        const { rooms: rawRooms } = await getMapRooms(api, CONFIG.shard)
         const rooms = rawRooms.filter(r => r.own && r.own.level && r.own.user !== '2')
         room = rooms[Math.floor(Math.random() * rooms.length)].id
       }
@@ -351,7 +526,7 @@ async function resetState() {
 }
 
 function processStats(stats) {
-  console.log(stats)
+  console.log("stats:", stats)
   state.stats = stats
 }
 
@@ -376,11 +551,13 @@ function processBattles(newBattles) {
 }
 
 async function run() {
-  api = await ScreepsAPI.fromConfig(SERVER, 'screeps-cap')
+  api = await ScreepsAPI.fromConfig(CONFIG.server, 'screeps-cap')
   // await api.raw.register.submit(api.opts.username, api.opts.username, api.opts.username, { main: '' })
-  const { twitch, chatTimeout = 60 } = api.appConfig
+  console.log("appConfig", api.appConfig)
+  const { twitch } = api.appConfig
   if (twitch) {
     console.log('Twitch integration activating')
+    const chatTimeout = twitch.chatTimeout ?? 60;
     setTimeout(() => {
       try {
         const Bot = new TwitchBot(twitch)
@@ -443,7 +620,7 @@ async function run() {
   }
   renderer.resize()
   renderer.zoomLevel = 0.19 //view.offsetHeight / 5000
-  console.log(renderer.zoomLevel, view.offsetWidth, view.clientWidth)
+  console.log("run:", renderer.zoomLevel, view.offsetWidth, view.clientWidth)
   await api.socket.connect()
   api.socket.subscribe('warpath:battles')
   api.socket.subscribe('stats:full')
@@ -540,7 +717,13 @@ function XYFromRoom(room) {
   return { x, y }
 }
 
-async function getMapRooms(api, shard = 'shard0') {
+/**
+ * 
+ * @param {ScreepsAPI} api 
+ * @param {string | undefined} shard 
+ * @returns 
+ */
+async function getMapRooms(api, shard = undefined) {
   if (!mapRoomsCache) {
     console.log('Scanning sectors')
     const sectors = await scanSectors()
@@ -575,7 +758,13 @@ async function getMapRooms(api, shard = 'shard0') {
 
   async function scan(rooms = []) {
     if (!rooms.length) return { rooms: [], users: {} }
-    const result = await api.raw.game.mapStats(rooms, shard, 'owner0')
+    let result;
+    try {
+      result = await api.raw.game.mapStats(rooms, 'owner0', shard)
+    } catch (e) {
+      console.error("error scanning rooms:", rooms, e)
+      return { rooms: [], users: [] }
+    }
     const ret = []
     for (const k in result.stats) {
       const { status, own } = result.stats[k]
@@ -602,7 +791,7 @@ async function minimap() {
     k: '#640000' // keeperLair
   }
   class MiniMapRoom {
-    constructor(api, id, { colors, rotate = 0 }) {
+    constructor(api, id, shard = "", { colors, rotate = 0 }) {
       this.api = api
       this.id = id
       this.colors = colors
@@ -613,7 +802,9 @@ async function minimap() {
       this.cont.y = y * 50
       this.cont.width = 50
       this.cont.height = 50
-      this.img = PIXI.Sprite.from(`${api.opts.url}assets/map/${id}.png`)
+      const baseUrl = api.opts.url === "https://screeps.com/" ? "https://d3os7yery2usni.cloudfront.net" : `${api.opts.url}assets`;
+      const shardSlug = shard !== "" ? `${shard}/` : "";
+      this.img = PIXI.Sprite.from(`${baseUrl}/map/${shardSlug}${id}.png`)
       this.img.width = 50
       this.img.height = 50
       this.cont.addChild(this.img)
@@ -662,13 +853,13 @@ async function minimap() {
     }
   }
   const rotateMap = 0 // (Math.PI * 2) * 0.25
-  const { rooms, users } = await getMapRooms(api)
+  const { rooms, users } = await getMapRooms(api, CONFIG.shard)
   const mapRooms = new Map()
   const miniMap = new PIXI.Container()
   window.miniMap = miniMap
   renderer.app.stage.addChild(miniMap)
   for (const room of rooms) {
-    const r = new MiniMapRoom(api, room.id, { colors, rotate: rotateMap })
+    const r = new MiniMapRoom(api, room.id, CONFIG.shard, { colors, rotate: rotateMap })
     r.update(room, users)
     mapRooms.set(room.id, r)
     miniMap.addChild(r.cont)
@@ -678,7 +869,7 @@ async function minimap() {
     if (currentRoom === lastRoom) return
     if (!currentRoom) return
     lastRoom = currentRoom
-    const { rooms, users } = await getMapRooms(api)
+    const { rooms, users } = await getMapRooms(api, CONFIG.shard)
     for (const room of rooms) {
       const r = mapRooms.get(room.id)
       r.update(room, users)
@@ -730,5 +921,4 @@ function sleep(ms) {
 
 run().catch(err => {
   console.error(err)
-  fs.appendFile('output.log', err.message + "\n", () => { })
 })

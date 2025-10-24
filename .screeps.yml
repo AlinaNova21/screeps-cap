@@ -1,7 +1,0 @@
-servers:
-  botarena:
-    host: botarena.screepspl.us
-    secure: true
-    port: 443
-    username: ChangeMe
-    password: ChangeMe
